@@ -1,307 +1,305 @@
-<!DOCTYPE html>
-
+[06.10.2026 20:40] K.U.R.R DON: <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
 <meta charset="UTF-8">
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>AFC Early Info</title>
+<title>AFC Early Info - News Index</title>
 
 <style>
-
 * {
-
   box-sizing: border-box;
-
 }
 
 body {
-
   margin: 0;
-
   font-family: Arial, sans-serif;
-
   background: #07111f;
-
-  color: white;
-
+  color: #ffffff;
 }
 
 header {
-
-  background: #0d1b2e;
-
-  padding: 22px;
-
-  border-bottom: 1px solid #24364d;
-
+  background: #10233d;
+  border-bottom: 1px solid #29425f;
+  padding: 18px 6%;
 }
 
 .logo {
-
-  font-size: 26px;
-
-  font-weight: bold;
-
+  font-size: 21px;
+  font-weight: 800;
   letter-spacing: 1px;
-
 }
 
 .logo span {
-
-  color: #39d98a;
-
+  color: #54e3c2;
 }
 
-.container {
-
-  max-width: 1100px;
-
-  margin: auto;
-
-  padding: 25px 16px;
-
+main {
+  width: 90%;
+  max-width: 1200px;
+  margin: 35px auto;
 }
 
-.hero {
-
-  margin-bottom: 30px;
-
-}
-
-.hero h1 {
-
-  font-size: 34px;
-
-  margin-bottom: 8px;
-
-}
-
-.hero p {
-
-  color: #9dafc5;
-
-}
-
-.status {
-
+.live {
   display: inline-block;
-
-  background: #123728;
-
-  color: #45e59a;
-
-  padding: 7px 12px;
-
+  background: #153d35;
+  color: #66efc7;
+  border: 1px solid #276758;
   border-radius: 20px;
-
-  font-size: 13px;
-
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: bold;
 }
 
-.match {
+h1 {
+  margin: 12px 0 7px;
+  font-size: 30px;
+}
 
-  background: #0e1b2c;
+.subtitle {
+  color: #9eb0c7;
+  line-height: 1.5;
+  margin-bottom: 25px;
+}
 
-  border: 1px solid #203249;
-
-  border-radius: 14px;
-
-  padding: 20px;
-
-  margin-top: 18px;
-
+.leagues {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0 30px;
 }
 
 .league {
-
-  color: #8497ae;
-
-  font-size: 13px;
-
-  margin-bottom: 14px;
-
-}
-
-.teams {
-
-  font-size: 21px;
-
-  font-weight: bold;
-
-  margin-bottom: 18px;
-
-}
-
-.odds {
-
-  display: flex;
-
-  gap: 12px;
-
-  flex-wrap: wrap;
-
-}
-
-.odd {
-
-  background: #16263a;
-
-  padding: 12px 18px;
-
+  background: #10233d;
+  border: 1px solid #29425f;
   border-radius: 8px;
-
+  padding: 10px 15px;
+  color: #c8d5e5;
+  font-size: 13px;
 }
 
-.old {
-
-  color: #91a1b5;
-
-  text-decoration: line-through;
-
+.league.active {
+  border-color: #54e3c2;
+  color: #54e3c2;
 }
 
-.new {
-
-  color: #45e59a;
-
+.section-title {
+  font-size: 18px;
   font-weight: bold;
-
+  margin: 25px 0 12px;
 }
 
-.movement {
+.monitor-box {
+  background: #0d1d31;
+  border: 1px solid #29425f;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 22px;
+  color: #aebfd2;
+  line-height: 1.6;
+  font-size: 13px;
+}
 
-  color: #45e59a;
+.monitor-box strong {
+  color: #54e3c2;
+}
 
+.news-grid {
+  display: grid;
+  gap: 15px;
+}
+
+.card {
+  background: #10233d;
+  border: 1px solid #29425f;
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.card.high {
+  border-left: 5px solid #ff5252;
+}
+
+.card.medium {
+  border-left: 5px solid #ffb74d;
+}
+
+.card.low {
+  border-left: 5px solid #54e3c2;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.match {
+  font-size: 18px;
   font-weight: bold;
-
 }
 
-.info {
+.time {
+  color: #8fa4bc;
+  font-size: 12px;
+}
 
-  margin-top: 18px;
+.tags {
+  margin: 12px 0;
+}
 
-  padding: 14px;
+.tag {
+  display: inline-block;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #1a304d;
+  color: #b7c8db;
+  font-size: 11px;
+}
 
-  background: #111f31;
+.signal {
+  line-height: 1.55;
+  margin: 10px 0;
+}
 
-  border-left: 3px solid #45e59a;
+.source {
+  margin-top: 12px;
+  color: #9eb0c7;
+  font-size: 12px;
+}
 
-  color: #c9d4e1;
+.meta {
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid #29425f;
+  color: #8fa4bc;
+  font-size: 12px;
+}
 
+.priority-high {
+  color: #ff6868;
+  font-weight: bold;
+}
+
+.priority-medium {
+  color: #ffc15c;
+  font-weight: bold;
+}
+
+.priority-low {
+  color: #54e3c2;
+  font-weight: bold;
+}
+
+.empty {
+  text-align: center;
+  padding: 35px 20px;
+  background: #0d1d31;
+  border: 1px dashed #29425f;
+  border-radius: 12px;
+  color: #8297af;
 }
 
 footer {
-
   text-align: center;
-
-  color: #687b91;
-
-  padding: 40px 20px;
-
+  color: #667c95;
+  padding: 40px;
+  font-size: 12px;
 }
 
-@media(max-width:600px) {
-
-  .hero h1 {
-
-    font-size: 27px;
-
+@media(max-width:700px) {
+  main {
+    width: 94%;
   }
 
-  .teams {
-
-    font-size: 18px;
-
+  h1 {
+    font-size: 24px;
   }
 
+  .match {
+    font-size: 16px;
+  }
 }
-
 </style>
-
 </head>
 
 <body>
 
 <header>
-
   <div class="logo">AFC <span>EARLY INFO</span></div>
-
 </header>
 
-<div class="container">
+<main>
 
-  <div class="hero">
+  <span class="live">● LIVE NEWS MONITORING</span>
 
-    <span class="status">● LIVE MONITORING</span>
+  <h1>Early Information Radar</h1>
 
-    <h1>Early Market Intelligence</h1>
+  <div class="subtitle">
+    Detecting important team information before the market fully reacts.
+  </div>
 
-    <p>Track early football information and important market movements.</p>
+  <div class="leagues">
+    <div class="league active">AFC Champions League Elite</div>
+    <div class="league active">AFC Champions League Two</div>
+    <div class="league">+ ADD LEAGUE</div>
+  </div>
+
+  <div class="monitor-box">
+    <strong>MONITORING:</strong>
+    Official club sources • League/AFC sources • Local media •
+    Trusted local journalists • Social media • Squad & travel reports •
+    Injuries & suspensions • National-team call-ups • Registration problems •
+    Rotation • Academy/youth players • Coach changes • Coach statements
+  </div>
+
+  <div class="section-title">🚨 NEWS INDEX</div>
+
+  <div class="news-grid" id="newsIndex">
+
+    <!-- HIGH PRIORITY EXAMPLE -->
+
+    <div class="card high">
+[06.10.2026 20:40] K.U.R.R DON: <div class="card-top">
+        <div class="match">Example Match</div>
+        <div class="time">NEW SIGNAL</div>
+      </div>
+
+      <div class="tags">
+        <span class="tag">SQUAD</span>
+        <span class="tag">TRAVEL</span>
+        <span class="tag">LOCAL SOURCE</span>
+      </div>
+
+      <div class="signal">
+        Important squad information detected.
+        The signal may materially change the expected strength of the team
+        and should be checked against the betting market immediately.
+      </div>
+
+      <div class="source">
+        Source: awaiting verified source
+      </div>
+
+      <div class="meta">
+        Reliability: DEVELOPING
+        &nbsp; | &nbsp;
+        Market impact:
+        <span class="priority-high">HIGH</span>
+      </div>
+
+    </div>
 
   </div>
 
-  <div class="match">
-
-    <div class="league">AFC • EARLY MARKET</div>
-
-    <div class="teams">
-
-      Home Team vs Away Team
-
-    </div>
-
-    <div class="odds">
-
-      <div class="odd">
-
-        Opening Odds<br>
-
-        <span class="old">2.10</span>
-
-      </div>
-
-      <div class="odd">
-
-        Current Odds<br>
-
-        <span class="new">1.72</span>
-
-      </div>
-
-      <div class="odd">
-
-        Movement<br>
-
-        <span class="movement">▼ 18.1%</span>
-
-      </div>
-
-    </div>
-
-    <div class="info">
-
-      <strong>EARLY INFO</strong><br><br>
-
-      Significant market movement detected.
-
-      Monitoring team news and market activity.
-
-    </div>
-
-  </div>
-
-</div>
+</main>
 
 <footer>
-
-AFC Early Info • Market Intelligence Platform
-
+  AFC Early Info • News Intelligence Platform
 </footer>
 
 </body>
-
 </html>
