@@ -197,7 +197,7 @@ NOISE_KEYWORDS = [
     "giveaway",
     "competition winner",
     "training photos",
-    "photo gallery",
+    "photo gallery",]
 # =========================
 # LANGUAGE SUPPORT
 #
