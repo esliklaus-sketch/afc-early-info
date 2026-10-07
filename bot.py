@@ -404,7 +404,7 @@ def build_alert(
         "🚨 AFC EARLY INFO\n\n"
         f"🏆 {league_text}\n\n"
         f"📰 {title}\n\n"
-[07.10.2026 13:32] K.U.R.R DON: f"📍 Source: {source_name}\n"
+        f"📍 Source: {source_name}\n"
         f"⚡ Importance: {score}/10+\n"
         f"🔎 Trigger: {reason_text}\n"
         f"🕐 Detected: {now}\n\n"
