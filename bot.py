@@ -4,6 +4,7 @@ import time
 import hashlib
 import requests
 import feedparser
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
 # ============================================================
@@ -498,6 +499,56 @@ def check_rss_source(source, seen):
             seen,
         )
 
+# =========================
+# WEB PAGE MONITOR
+# =========================
+
+def check_web_source(source, seen):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 AFC-Early-Info/1.0"
+    }
+
+    response = requests.get(
+        source["url"],
+        headers=headers,
+        timeout=20,
+    )
+
+    response.raise_for_status()
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser",
+    )
+
+    links = soup.find_all("a", href=True)
+
+    for item in links[:100]:
+
+        title = item.get_text(
+            " ",
+            strip=True,
+        )
+
+        if not title or len(title) < 15:
+            continue
+
+        link = item["href"]
+
+        if link.startswith("/"):
+            from urllib.parse import urljoin
+            link = urljoin(source["url"], link)
+
+        process_story(
+            source["name"],
+            source.get("trust", 1),
+            title,
+            "",
+            link,
+            seen,
+        )
+
 
 # =========================
 # CHECK ALL SOURCES
@@ -515,6 +566,13 @@ def check_sources(seen):
                     source,
                     seen,
                 )
+
+elif source["type"] == "web":
+
+    check_web_source(
+        source,
+        seen,
+    )        
 
         except Exception as exc:
 
