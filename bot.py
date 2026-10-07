@@ -104,20 +104,325 @@ LEAGUES = {
 # official clubs, federations and local media here.
 # =========================
 
-SOURCES = [ {
+SOURCES = [
+
+    # =========================================================
+    # AFC - OFFICIAL COMPETITIONS
+    # =========================================================
+
+    {
+        "name": "AFC Champions League Elite",
+        "url": "https://www.the-afc.com/en/club/afc_champions_league_elite.html",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
         "name": "AFC Champions League Two",
         "url": "https://www.the-afc.com/en/club/afc_champions_league_two.html",
         "type": "web",
         "trust": 3,
     },
-    # Example:
-    #
-    # {
-    #     "name": "Source Name",
-    #     "url": "https://example.com/rss",
-    #     "type": "rss",
-    #     "trust": 3,
-    # }
+
+    {
+        "name": "AFC Challenge League",
+        "url": "https://www.the-afc.com/en/club/afc_challenge_league.html",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # ASEAN / SHOPEE CUP
+    # =========================================================
+
+    {
+        "name": "ASEAN United FC - Shopee Cup",
+        "url": "https://aseanutdfc.com/asean-club-championship",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "ASEAN Football Federation",
+        "url": "https://www.aseanfootball.org/v3/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # MALAYSIA - JDT + LOCAL EARLY INFO
+    # =========================================================
+
+    {
+        "name": "Johor Darul Tazim Official",
+        "url": "https://johorsoutherntigers.my/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "MakanBola Malaysia",
+        "url": "https://makanbola.com/",
+        "type": "web",
+        "trust": 2,
+    },
+
+    {
+        "name": "RTM Sukan Malaysia",
+        "url": "https://berita.rtm.gov.my/arena",
+        "type": "web",
+        "trust": 2,
+    },
+
+    {
+        "name": "Utusan Sukan Malaysia",
+        "url": "https://www.utusan.com.my/category/sukan/",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # INDONESIA - PERSIB / LIGA 1
+    # =========================================================
+
+    {
+        "name": "Persib Bandung Official",
+        "url": "https://persib.co.id/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Detik Jabar Persib",
+        "url": "https://www.detik.com/jabar/sepakbola",
+        "type": "web",
+        "trust": 2,
+    },
+
+    {
+        "name": "BolaSport Indonesia",
+        "url": "https://www.bolasport.com/",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # SINGAPORE - LION CITY SAILORS
+    # =========================================================
+
+    {
+        "name": "Lion City Sailors Official",
+        "url": "https://www.lioncitysailorsfc.sg/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Football Association Singapore",
+        "url": "https://www.fas.org.sg/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # VIETNAM
+    # =========================================================
+
+    {
+        "name": "Vietnam Football Federation",
+        "url": "https://vff.org.vn/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Vietnam Football",
+        "url": "https://vietnamnet.vn/en/sports",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # THAILAND
+    # =========================================================
+
+    {
+        "name": "Thai League Official",
+        "url": "https://thaileague.co.th/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Football Association Thailand",
+        "url": "https://fathailand.org/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # AUSTRALIA
+    # =========================================================
+
+    {
+        "name": "A-Leagues Australia",
+        "url": "https://aleagues.com.au/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Football Australia",
+        "url": "https://www.footballaustralia.com.au/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # JAPAN
+    # =========================================================
+
+    {
+        "name": "J League Official",
+        "url": "https://www.jleague.jp/en/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # SOUTH KOREA
+    # =========================================================
+
+    {
+        "name": "K League Official",
+        "url": "https://www.kleague.com/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # SAUDI ARABIA
+    # =========================================================
+
+    {
+        "name": "Saudi Pro League",
+        "url": "https://www.spl.com.sa/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Arriyadiyah Saudi",
+        "url": "https://arriyadiyah.com/",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # QATAR
+    # =========================================================
+
+    {
+        "name": "Qatar Stars League",
+        "url": "https://www.qsl.qa/en",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # UAE
+    # =========================================================
+
+    {
+        "name": "UAE Pro League",
+        "url": "https://www.uaeproleague.ae/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "UAE Football Association",
+        "url": "https://www.uaefa.ae/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # IRAQ
+    # =========================================================
+
+    {
+        "name": "Iraq Football Association",
+        "url": "https://ifa.iq/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Shafaq Iraq Sports",
+        "url": "https://shafaq.com/en/Sports",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # KUWAIT
+    # =========================================================
+
+    {
+        "name": "Kuwait Football Association",
+        "url": "https://kfa.org.kw/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Al Rai Kuwait Sports",
+        "url": "https://www.alraimedia.com/",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # EGYPT
+    # =========================================================
+
+    {
+        "name": "Egyptian Football Association",
+        "url": "https://www.efa.com.eg/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    {
+        "name": "Ahram Sports Egypt",
+        "url": "https://english.ahram.org.eg/Category/6/Sports.aspx",
+        "type": "web",
+        "trust": 2,
+    },
+
+    # =========================================================
+    # INDIA
+    # =========================================================
+
+    {
+        "name": "AIFF India",
+        "url": "https://www.the-aiff.com/",
+        "type": "web",
+        "trust": 3,
+    },
+
+    # =========================================================
+    # IRAN
+    # =========================================================
+
+    {
+        "name": "Iran Football Federation",
+        "url": "https://ffiri.ir/",
+        "type": "web",
+        "trust": 3,
+    },
+
 ]
 
 
