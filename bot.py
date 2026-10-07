@@ -622,5 +622,5 @@ def main():
         time.sleep(CHECK_INTERVAL)
 
 
-if name == "main":
+if __name__ == "__main__":
     main()
