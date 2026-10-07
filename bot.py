@@ -1,4 +1,4 @@
-[07.10.2026 13:32] K.U.R.R DON: import os
+import os
 import re
 import time
 import hashlib
