@@ -198,8 +198,7 @@ NOISE_KEYWORDS = [
     "competition winner",
     "training photos",
     "photo gallery",
-]
-[07.10.2026 13:32] K.U.R.R DON: # =========================
+# =========================
 # LANGUAGE SUPPORT
 #
 # Initial local-language terms.
