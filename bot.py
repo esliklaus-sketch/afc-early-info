@@ -610,13 +610,13 @@ def main():
     startup_message()
 
 
- try:
+    try:
 
-            check_sources(seen)
+        check_sources(seen)
 
- except Exception as exc:
+    except Exception as exc:
 
-            print("Main loop error:", exc)
+        print("Main loop error:", exc)
 
 
 
