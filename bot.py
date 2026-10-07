@@ -104,8 +104,7 @@ LEAGUES = {
 # official clubs, federations and local media here.
 # =========================
 
-SOURCES = 
-[ {
+SOURCES = [ {
         "name": "AFC Champions League Two",
         "url": "https://www.the-afc.com/en/club/afc_champions_league_two.html",
         "type": "web",
