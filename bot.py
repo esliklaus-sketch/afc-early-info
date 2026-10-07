@@ -566,7 +566,7 @@ def check_sources(seen):
                     seen,
                 )
 
-             elif source["type"] == "web":
+            elif source["type"] == "web":
 
                 check_web_source(
                     source,
