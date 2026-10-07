@@ -609,17 +609,16 @@ def main():
 
     startup_message()
 
-    while True:
 
-        try:
+ try:
 
             check_sources(seen)
 
-        except Exception as exc:
+ except Exception as exc:
 
             print("Main loop error:", exc)
 
-        time.sleep(CHECK_INTERVAL)
+
 
 
 if __name__ == "__main__":
