@@ -6,6 +6,7 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
+from afc_social_press import check_afc_social_press
 
 # ============================================================
 # AFC EARLY INFO
@@ -923,7 +924,7 @@ def main():
     try:
 
         check_sources(seen)
-
+        check_afc_social_press(send_telegram)
     except Exception as exc:
 
         print("Main loop error:", exc)
