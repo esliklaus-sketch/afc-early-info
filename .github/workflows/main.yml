@@ -5,14 +5,29 @@ on:
   schedule:
     - cron: "*/5 * * * *"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: afc-early-info-bot
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
 
     steps:
       - name: Get code
         uses: actions/checkout@v4
+
+      - name: Restore sent news
+        uses: actions/cache/restore@v4
+        with:
+          path: seen_news.txt
+          key: afc-seen-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            afc-seen-v1-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,7 +38,15 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run AFC Early Info
+        timeout-minutes: 3
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
+
+      - name: Save sent news
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: seen_news.txt
+          key: afc-seen-v1-${{ github.run_id }}-${{ github.run_attempt }}
