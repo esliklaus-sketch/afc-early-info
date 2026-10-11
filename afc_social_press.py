@@ -129,7 +129,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                         normalized_title = re.sub(r'[^\\w\\s]', ' ', item['title'].lower(), flags=re.UNICODE)
                         normalized_title = re.sub(r'\\s+', ' ', normalized_title).strip()
                         digest = hashlib.sha256(
-                            (team.lower().strip() + '|' + normalized_title).encode('utf-8')
+                            normalized_title.encode('utf-8')
                         ).hexdigest()
                         if digest in state:
                             continue
