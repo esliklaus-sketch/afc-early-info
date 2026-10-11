@@ -24,7 +24,9 @@ jobs:
       - name: Restore sent news
         uses: actions/cache/restore@v4
         with:
-          path: seen_news.txt
+          path: |
+            seen_news.txt
+            afc_press_seen.json
           key: afc-seen-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             afc-seen-v1-
@@ -48,5 +50,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: seen_news.txt
+          path: |
+            seen_news.txt
+            afc_press_seen.json
           key: afc-seen-v1-${{ github.run_id }}-${{ github.run_attempt }}
