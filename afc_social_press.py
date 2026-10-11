@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -15,7 +16,9 @@ import feedparser
 import requests
 
 STATE_PATH = Path(os.getenv("AFC_PRESS_STATE", "afc_press_seen.json"))
-TIMEOUT = 12
+TIMEOUT = (3, 6)
+MAX_SCAN_SECONDS = 180
+MAX_CONSECUTIVE_FAILURES = 3
 MIN_ALERT_SCORE = 3
 MAX_IMPORTANCE_SCORE = 10
 
@@ -2185,9 +2188,13 @@ def _google_news_feed(team):
     return "https://news.google.com/rss/search?q="+quote(q)+"&hl=en&gl=US&ceid=US:en"
 
 def _source_search_feeds(team):
-    terms='(injury OR squad OR lineup OR "press conference" OR suspended OR absence OR travel)'
-    return ["https://news.google.com/rss/search?q="+quote(f'"{team}" {terms} site:{d}')+"&hl=en&gl=US&ceid=US:en"
-            for d in _publisher_domains(team)]
+    domains = _publisher_domains(team)
+    if not domains:
+        return []
+    sites = " OR ".join("site:" + d for d in domains)
+    q = f'"{team}" ({sites}) when:2d'
+    return ["https://news.google.com/rss/search?q=" + quote(q)
+            + "&hl=en&gl=US&ceid=US:en"]
 
 def _feed_items(url):
     r=requests.get(url, timeout=TIMEOUT, headers={"User-Agent":"AFC-Early-Info/2.0"})
@@ -2228,13 +2235,27 @@ def registry_stats():
 def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
-    for team in TARGET_TEAMS:
-        feeds=[_google_news_feed(team)] + _source_search_feeds(team)
-        for feed_url in feeds:
+    started=time.monotonic(); failures=0; stopped=False
+    # Check all general team feeds before optional publisher searches.
+    work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
+    work += [(team, url) for team in TARGET_TEAMS for url in _source_search_feeds(team)]
+    for team, feed_url in work:
+            if time.monotonic()-started >= MAX_SCAN_SECONDS:
+                print("[AFC PRESS] Scan time budget reached; remaining feeds deferred",flush=True)
+                stopped=True
+                break
             checked_feeds+=1
-            try: entries=list(_feed_items(feed_url))
+            try:
+                entries=list(_feed_items(feed_url))
+                failures=0
             except (requests.RequestException,ValueError,OSError) as exc:
-                print(f"[AFC PRESS] Feed unavailable for {team}: {exc}",flush=True); continue
+                failures+=1
+                print(f"[AFC PRESS] Feed unavailable for {team}: {exc}",flush=True)
+                if failures >= MAX_CONSECUTIVE_FAILURES:
+                    print("[AFC PRESS] Discovery unavailable after 3 consecutive failures; stopping this scan",flush=True)
+                    stopped=True
+                    break
+                continue
             for item in entries:
                 if not item["title"] or not item["link"] or not _recent(item,now): continue
                 tags=_classify(item)
@@ -2267,5 +2288,5 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
             except (TypeError,ValueError): pass
         _save_state(retained)
     st=registry_stats()
-    print(f"[AFC PRESS] records={st['embedded_records']} teams={st['target_teams']} unique_urls={st['unique_urls']} feeds={checked_feeds} candidates={candidates} {'dry_run' if dry_run else 'sent'}={alerts}",flush=True)
+    print(f"[AFC PRESS] records={st['embedded_records']} teams={st['target_teams']} unique_urls={st['unique_urls']} feeds={checked_feeds} incomplete={stopped} candidates={candidates} {'dry_run' if dry_run else 'sent'}={alerts}",flush=True)
     return alerts
