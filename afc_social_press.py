@@ -126,7 +126,11 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                         tags = _classify(item)
                         if not HIGH_PRIORITY.intersection(tags):
                             continue
-                        digest = hashlib.sha256((team + '|' + item['link'].split('?')[0]).encode()).hexdigest()
+                        normalized_title = re.sub(r'[^\\w\\s]', ' ', item['title'].lower(), flags=re.UNICODE)
+                        normalized_title = re.sub(r'\\s+', ' ', normalized_title).strip()
+                        digest = hashlib.sha256(
+                            (team.lower().strip() + '|' + normalized_title).encode('utf-8')
+                        ).hexdigest()
                         if digest in state:
                             continue
                         candidates += 1
