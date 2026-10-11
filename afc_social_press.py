@@ -1,8 +1,8 @@
-"""AFC social/press news discovery add-on. No Telegram secrets stored here.
-Install: pip install requests feedparser
-Call: from afc_social_press import check_afc_social_press
-      check_afc_social_press(send_message=your_existing_telegram_sender)
-Sender signature: send_message(text: str). Schedule every 10-20 minutes.
+"""AFC social/press discovery add-on.
+
+Google News RSS is used for discovery only, not verification.
+Verified RSS/Atom feeds can be configured in VERIFIED_FEEDS.
+The caller's send_message(text) must return True on confirmed delivery.
 """
 import hashlib
 import json
@@ -17,7 +17,6 @@ import requests
 
 STATE_PATH = Path(os.getenv('AFC_PRESS_STATE', 'afc_press_seen.json'))
 TIMEOUT = 12
-# Team names as shown in the two screenshots. Verified social URLs can be added below.
 MATCHES = {
     '2026-10-12': [
         ('Pakhtakor', 'Al Qadsiah'), ('Al Wasl', 'Al Ahli Saudi'),
@@ -32,12 +31,9 @@ MATCHES = {
         ('East Bengal', 'Al Shorta'), ('Al Seeb', 'Al Hussein SC'),
     ],
 }
-# Add ONLY confirmed club or federation RSS/Atom feeds. Social media URLs
-# without RSS/API access must NOT be treated as machine-readable feeds.
 VERIFIED_FEEDS = {
-    # 'East Bengal': ['https://verified-site.example/rss'],
+    # Add only verified, machine-readable RSS/Atom feed URLs.
 }
-# Keyword candidates, not confirmation of squad news.
 SIGNALS = {
     'SQUAD': ['injury', 'injured', 'ruled out', 'sidelined', 'suspended', 'absence',
               'unavailable', 'doubtful', 'out of squad', 'missing', 'إصابة', 'غياب',
@@ -71,6 +67,8 @@ def _feed_items(url):
     response = requests.get(url, timeout=TIMEOUT, headers={'User-Agent': 'AFC-Early-Info/1.0'})
     response.raise_for_status()
     feed = feedparser.parse(response.content)
+    if feed.bozo and not feed.entries:
+        raise ValueError(f'Invalid or unreadable feed: {feed.bozo_exception}')
     for item in feed.entries[:15]:
         yield {
             'title': re.sub(r'<[^>]*>', ' ', item.get('title', '')).strip(),
@@ -83,7 +81,7 @@ def _feed_items(url):
 def _recent(item, now):
     stamp = item['published']
     if not stamp:
-        return False  # Undated content cannot be called breaking news.
+        return False
     try:
         published = datetime(*stamp[:6], tzinfo=timezone.utc)
     except (ValueError, TypeError):
@@ -97,21 +95,17 @@ def _classify(item):
 
 
 def _google_news_feed(team, opponent):
-    # Google News RSS is a discovery source; linked publisher must be checked
-    # before claiming the information is confirmed or officially sourced.
     query = f'"{team}" (injury OR squad OR lineup OR "press conference" OR suspended OR coach)'
     return 'https://news.google.com/rss/search?q=' + quote(query) + '&hl=en&gl=US&ceid=US:en'
 
 
 def check_afc_social_press(send_message, now=None, dry_run=False):
-    """Returns number of alerts sent. Sender must accept one string argument.
-
-    Existing bot handles Telegram; this add-on never starts a second bot loop.
-    """
+    """Return the count of successfully sent alerts (or dry-run candidates)."""
     now = now or datetime.now(timezone.utc)
     state = _load_state()
     alerts = 0
-    # Limit activity to 3 days before and 1 day after a match.
+    checked_feeds = 0
+    candidates = 0
     for day, games in MATCHES.items():
         match_day = datetime.strptime(day, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         if not (match_day - timedelta(days=3) <= now <= match_day + timedelta(days=2)):
@@ -120,24 +114,22 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
             for team, opponent in ((home, away), (away, home)):
                 feeds = [_google_news_feed(team, opponent)] + VERIFIED_FEEDS.get(team, [])
                 for feed_url in feeds:
+                    checked_feeds += 1
                     try:
                         entries = list(_feed_items(feed_url))
                     except (requests.RequestException, ValueError, OSError) as exc:
-                        print(f'[AFC PRESS] Feed unavailable for {team}: {exc}')
+                        print(f'[AFC PRESS] Feed unavailable for {team}: {exc}', flush=True)
                         continue
                     for item in entries:
                         if not item['title'] or not item['link'] or not _recent(item, now):
                             continue
                         tags = _classify(item)
-                        if not tags:
-                            continue
-                        # Only potentially impactful news; press conference alone
-                        # is not sufficient unless a squad/lineup/travel signal exists.
                         if not HIGH_PRIORITY.intersection(tags):
                             continue
                         digest = hashlib.sha256((team + '|' + item['link'].split('?')[0]).encode()).hexdigest()
                         if digest in state:
                             continue
+                        candidates += 1
                         msg = (f'⚠️ AFC EARLY INFO | UNVERIFIED\n'
                                f'📅 {day} | {home} vs {away}\n'
                                f'🏟️ Team: {team}\n'
@@ -145,14 +137,32 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                                f'📰 {item["title"][:180]}\n'
                                f'🔗 {item["link"]}\n'
                                f'⚠️ Candidate only: verify primary source, player identity, and match relevance.')
-                        if not dry_run:
-                            send_message(msg)  # Mark as seen only after successful delivery.
-                            state[digest] = now.isoformat()
-                            _save_state(state)
+                        if dry_run:
+                            alerts += 1
+                            continue
+                        try:
+                            delivered = send_message(msg)
+                        except Exception as exc:
+                            print(f'[AFC PRESS] Telegram sender error for {team}: {exc}', flush=True)
+                            continue
+                        if delivered is not True:
+                            print(f'[AFC PRESS] Delivery not confirmed for {team}; will retry later', flush=True)
+                            continue
+                        state[digest] = now.isoformat()
+                        _save_state(state)
                         alerts += 1
-    # Retain recent dedup keys only.
+                        print(f'[AFC PRESS] ALERT SENT: {team} | {item["title"][:100]}', flush=True)
     if not dry_run:
         cutoff = now - timedelta(days=14)
-        state = {k: v for k, v in state.items() if datetime.fromisoformat(v) >= cutoff}
-        _save_state(state)
+        retained = {}
+        for key, value in state.items():
+            try:
+                if datetime.fromisoformat(value) >= cutoff:
+                    retained[key] = value
+            except (TypeError, ValueError):
+                continue
+        _save_state(retained)
+    print(f'[AFC PRESS] feeds={checked_feeds} candidates={candidates} '
+          f'{"dry_run" if dry_run else "sent"}={alerts} verified_feeds={sum(map(len, VERIFIED_FEEDS.values()))}',
+          flush=True)
     return alerts
