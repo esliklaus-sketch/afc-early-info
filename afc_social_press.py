@@ -2139,6 +2139,22 @@ SIGNALS = {
     "COACH": ["press conference", "pre-match", "head coach", "manager said", "المؤتمر الصحفي", "記者会見", "기자회견"],
     "TRAVEL": ["flight delayed", "travel disruption", "visa issue", "stranded", "arrived late", "travel delay"],
 }
+SIGNALS["SQUAD"] += ["مصدوم", "مصدومیت", "غایب", "غیبت", "محروم", "محرومیت", "آسیب دیدگی", "آسیب‌دیدگی", "غيابات", "يغيب", "الإصابة"]
+SIGNALS["LINEUP"] += ["ترکیب اصلی", "ترکیب احتمالی"]
+SIGNALS["COACH"] += ["نشست خبری", "کنفرانس خبری"]
+
+DISCOVERY_NAMES = {
+    "Esteghlal": ["Esteghlal", "استقلال"],
+    "Tractor": ["Tractor", "تراکتور"],
+    "Al Gharafa": ["Al Gharafa", "الغرافة"],
+    "Al Wasl": ["Al Wasl", "الوصل"],
+    "Al Ahli Saudi": ["Al Ahli Saudi", "Al Ahli", "الأهلي السعودي"],
+    "Al Qadsiah": ["Al Qadsiah", "القادسية"],
+}
+
+def _team_query(team):
+    return "(" + " OR ".join('"' + name + '"' for name in DISCOVERY_NAMES.get(team, [team])) + ")"
+
 HIGH_PRIORITY = {"SQUAD", "LINEUP", "TRAVEL"}
 
 TEAM_ALIASES = {
@@ -2184,7 +2200,7 @@ def _publisher_domains(team):
     return domains[:12]
 
 def _google_news_feed(team):
-    q=f'"{team}" (injury OR squad OR lineup OR "press conference" OR suspended OR absence OR travel OR coach)'
+    q=f'{_team_query(team)} when:2d'
     return "https://news.google.com/rss/search?q="+quote(q)+"&hl=en&gl=US&ceid=US:en"
 
 def _source_search_feeds(team):
@@ -2192,7 +2208,7 @@ def _source_search_feeds(team):
     if not domains:
         return []
     sites = " OR ".join("site:" + d for d in domains)
-    q = f'"{team}" ({sites}) when:2d'
+    q = f'{_team_query(team)} ({sites}) when:2d'
     return ["https://news.google.com/rss/search?q=" + quote(q)
             + "&hl=en&gl=US&ceid=US:en"]
 
@@ -2235,6 +2251,7 @@ def registry_stats():
 def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
+    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "no_signal", "below_score", "already_seen")}
     started=time.monotonic(); failures=0; stopped=False
     # Check all general team feeds before optional publisher searches.
     work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
@@ -2248,8 +2265,11 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
             try:
                 entries=list(_feed_items(feed_url))
                 failures=0
+                counts["items"]+=len(entries)
+                if not entries: counts["empty_feeds"]+=1
             except (requests.RequestException,ValueError,OSError) as exc:
                 failures+=1
+                counts["feed_errors"]+=1
                 print(f"[AFC PRESS] Feed unavailable for {team}: {exc}",flush=True)
                 if failures >= MAX_CONSECUTIVE_FAILURES:
                     print("[AFC PRESS] Discovery unavailable after 3 consecutive failures; stopping this scan",flush=True)
@@ -2257,15 +2277,23 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     break
                 continue
             for item in entries:
-                if not item["title"] or not item["link"] or not _recent(item,now): continue
+                if not item["title"] or not item["link"]:
+                    counts["missing_fields"]+=1; continue
+                if not item["published"]:
+                    counts["missing_date"]+=1; continue
+                if not _recent(item,now):
+                    counts["outside_window"]+=1; continue
                 tags=_classify(item)
-                if not HIGH_PRIORITY.intersection(tags): continue
+                if not HIGH_PRIORITY.intersection(tags):
+                    counts["no_signal"]+=1; continue
                 score=_importance_score(tags,item["title"],item["summary"])
-                if score < MIN_ALERT_SCORE: continue
+                if score < MIN_ALERT_SCORE:
+                    counts["below_score"]+=1; continue
                 norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
                 norm=re.sub(r"\s+"," ",norm).strip()
                 digest=hashlib.sha256((team+"|"+norm).encode("utf-8")).hexdigest()
-                if digest in state: continue
+                if digest in state:
+                    counts["already_seen"]+=1; continue
                 candidates+=1
                 msg=(f"⚠️ AFC EARLY INFO | UNVERIFIED\n🏟️ Team: {team}\n"
                      f"🔎 Signals: {', '.join(tags)} | Score: {score}/10\n"
@@ -2287,6 +2315,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if datetime.fromisoformat(v)>=cutoff: retained[k]=v
             except (TypeError,ValueError): pass
         _save_state(retained)
+    print("[AFC PRESS] diagnostics="+json.dumps(counts,sort_keys=True),flush=True)
     st=registry_stats()
     print(f"[AFC PRESS] records={st['embedded_records']} teams={st['target_teams']} unique_urls={st['unique_urls']} feeds={checked_feeds} incomplete={stopped} candidates={candidates} {'dry_run' if dry_run else 'sent'}={alerts}",flush=True)
     return alerts
