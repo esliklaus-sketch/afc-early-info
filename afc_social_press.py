@@ -5,6 +5,7 @@ Important: embedded source != automatically machine-readable. Social URLs remain
 """
 import html
 from html.parser import HTMLParser
+from concurrent.futures import ThreadPoolExecutor
 import unicodedata
 import hashlib
 import json
@@ -2404,26 +2405,34 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     # Check all general team feeds before optional publisher searches.
     work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
     work += [(team, url) for team in TARGET_TEAMS for url in _source_search_feeds(team)]
-    for team, feed_url in work:
+    def collect_feed(pair):
+        team,url=pair
+        try: return team,list(_feed_items(url)),None
+        except Exception as exc: return team,[],str(exc)[:180]
+    # Complete discovery for every team before any article extraction.
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        collected=list(pool.map(collect_feed,work))
+    checked_feeds=len(collected)
+    queues={team:[] for team in TARGET_TEAMS}
+    for team,entries,error in collected:
+        counts["items"]+=len(entries)
+        if error:
+            counts["feed_errors"]+=1
+            print(f"[AFC PRESS] Feed unavailable for {team}: {error}",flush=True)
+        elif not entries: counts["empty_feeds"]+=1
+        queues[team].extend(entries)
+    print(f"[AFC PRESS] DISCOVERY_COMPLETE feeds={checked_feeds}/{len(work)} teams={len(queues)} errors={counts['feed_errors']}",flush=True)
+    # Alternate teams so article time is shared across the entire target list.
+    article_work=[]
+    for index in range(max((len(q) for q in queues.values()),default=0)):
+        article_work.extend((team,[queue[index]]) for team,queue in queues.items() if index<len(queue))
+    processed_work=0
+    for team, entries in article_work:
             if time.monotonic()-started >= MAX_SCAN_SECONDS:
-                print("[AFC PRESS] Scan time budget reached; remaining feeds deferred",flush=True)
+                print("[AFC PRESS] Article time budget reached; discovery was completed, article processing is incomplete",flush=True)
                 stopped=True
                 break
-            checked_feeds+=1
-            try:
-                entries=list(_feed_items(feed_url))
-                failures=0
-                counts["items"]+=len(entries)
-                if not entries: counts["empty_feeds"]+=1
-            except (requests.RequestException,ValueError,OSError) as exc:
-                failures+=1
-                counts["feed_errors"]+=1
-                print(f"[AFC PRESS] Feed unavailable for {team}: {exc}",flush=True)
-                if failures >= MAX_CONSECUTIVE_FAILURES:
-                    print("[AFC PRESS] Discovery unavailable after 3 consecutive failures; stopping this scan",flush=True)
-                    stopped=True
-                    break
-                continue
+            processed_work+=1
             for item in entries:
                 if not item["title"] or not item["link"]:
                     counts["missing_fields"]+=1; continue
@@ -2500,6 +2509,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if datetime.fromisoformat(v)>=cutoff: retained[k]=v
             except (TypeError,ValueError): pass
         _save_state(retained)
+    print(f"[AFC PRESS] article_items_processed={processed_work}/{len(article_work)}",flush=True)
     print(f"[AFC PRESS] article_reads={article_reads} article_failures={article_failures}",flush=True)
     print("[AFC PRESS] diagnostics="+json.dumps(counts,sort_keys=True),flush=True)
     st=registry_stats()
