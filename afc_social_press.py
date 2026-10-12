@@ -2286,6 +2286,20 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
     counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen")}
+    samples={}
+    sample_keys=set()
+    focus={"Esteghlal", "Al Gharafa", "Al Wasl", "Al Ahli Saudi", "Tai Po", "Tractor", "Gangwon"}
+    def record_sample(reason, team, item):
+        bucket=(reason, team if team in focus else "other")
+        key=(reason,team,item["title"])
+        if samples.get(bucket,0)>=2 or key in sample_keys:
+            return
+        samples[bucket]=samples.get(bucket,0)+1
+        sample_keys.add(key)
+        stamp=item.get("published")
+        try: published=datetime(*stamp[:6],tzinfo=timezone.utc).isoformat() if stamp else None
+        except (ValueError,TypeError): published=None
+        print("[AFC PRESS] REJECT_SAMPLE "+json.dumps({"reason":reason,"team":team,"title":item["title"],"summary":item.get("summary","")[:500],"published":published,"link":item.get("link","")},ensure_ascii=False),flush=True)
     started=time.monotonic(); failures=0; stopped=False
     # Check all general team feeds before optional publisher searches.
     work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
@@ -2316,13 +2330,16 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if not item["published"]:
                     counts["missing_date"]+=1; continue
                 if not _recent(item,now):
-                    counts["outside_window"]+=1; continue
+                    counts["outside_window"]+=1
+                    record_sample("outside_window",team,item); continue
                 reason=_relevance_reason(team,item)
                 if reason:
-                    counts[reason]+=1; continue
+                    counts[reason]+=1
+                    record_sample(reason,team,item); continue
                 tags=_classify(item)
                 if not HIGH_PRIORITY.intersection(tags):
-                    counts["no_signal"]+=1; continue
+                    counts["no_signal"]+=1
+                    record_sample("no_signal",team,item); continue
                 score=_importance_score(tags,item["title"],item["summary"])
                 if score < MIN_ALERT_SCORE:
                     counts["below_score"]+=1; continue
