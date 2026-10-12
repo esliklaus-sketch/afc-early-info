@@ -918,7 +918,7 @@ def main():
 
     seen = load_seen()
 
-    startup_message()
+        # startup_message()
 
 
     try:
