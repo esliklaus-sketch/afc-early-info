@@ -20,7 +20,7 @@ import requests
 
 STATE_PATH = Path(os.getenv("AFC_PRESS_STATE", "afc_press_seen.json"))
 TIMEOUT = (3, 6)
-MAX_SCAN_SECONDS = 180
+MAX_SCAN_SECONDS = int(os.getenv("AFC_PRESS_MAX_SCAN_SECONDS", "480"))
 MAX_CONSECUTIVE_FAILURES = 3
 MIN_ALERT_SCORE = 3
 MAX_IMPORTANCE_SCORE = 10
@@ -2283,7 +2283,8 @@ class _ArticleText(HTMLParser):
         return "\n".join(self.article_parts or self.parts)[:60000]
 
 
-def _read_article(item, cache):
+def _read_article(item, cache, blocked_hosts=None):
+    blocked_hosts=blocked_hosts if blocked_hosts is not None else set()
     link=item["link"]
     if link in cache: return cache[link]
     try:
@@ -2296,8 +2297,12 @@ def _read_article(item, cache):
         parsed=urlparse(link)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Invalid article URL")
+        if _host(link) in blocked_hosts:
+            raise ValueError("Publisher returned 403 earlier in this scan; deferred")
         response=requests.get(link, timeout=TIMEOUT, headers={"User-Agent":"AFC-Early-Info/2.1"}, stream=True)
         try:
+            if response.status_code == 403:
+                blocked_hosts.add(_host(link))
             response.raise_for_status()
             if "html" not in response.headers.get("Content-Type", "").lower():
                 raise ValueError("Article is not HTML")
@@ -2378,6 +2383,8 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen", "past_fixture")}
     samples={}
     article_cache={}
+    blocked_hosts=set()
+    processed_items=set()
     article_reads=0
     article_failures=0
     sample_keys=set()
@@ -2425,6 +2432,15 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if not _recent(item,now):
                     counts["outside_window"]+=1
                     record_sample("outside_window",team,item); continue
+                norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
+                norm=re.sub(r"\s+"," ",norm).strip()
+                digest=hashlib.sha256((team+"|"+norm).encode("utf-8")).hexdigest()
+                if digest in state:
+                    counts["already_seen"]+=1; continue
+                item_key=(team,item["link"],norm)
+                if item_key in processed_items:
+                    continue
+                processed_items.add(item_key)
                 # First require an explicit team match in the feed, before fetching.
                 feed_text=_normalized(item["title"]+" "+item["summary"])
                 names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team]))
@@ -2433,7 +2449,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     record_sample("wrong_team",team,item); continue
                 if time.monotonic()-started >= MAX_SCAN_SECONDS:
                     stopped=True; break
-                body, article_url, article_error=_read_article(item,article_cache)
+                body, article_url, article_error=_read_article(item,article_cache,blocked_hosts)
                 if article_error:
                     article_failures+=1
                     print(f"[AFC PRESS] ARTICLE_UNREADABLE: {team} | {item['title'][:100]} | {article_error}",flush=True)
