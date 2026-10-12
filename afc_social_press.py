@@ -3,6 +3,8 @@ Generated from AFC_MASTER_ALL_SOURCES_11_OCT_2026.json.
 All 291 recovered team-source records are embedded below.
 Important: embedded source != automatically machine-readable. Social URLs remain discovery references.
 """
+import html
+import unicodedata
 import hashlib
 import json
 import os
@@ -2144,13 +2146,45 @@ SIGNALS["LINEUP"] += ["ترکیب اصلی", "ترکیب احتمالی"]
 SIGNALS["COACH"] += ["نشست خبری", "کنفرانس خبری"]
 
 DISCOVERY_NAMES = {
+    "Tai Po": ["Tai Po FC", "Tai Po Football Club", "大埔足球會", "大埔足球会"],
+    "Gangwon": ["Gangwon FC", "강원FC", "강원 FC"],
+    "Al Ain": ["Al Ain FC", "Al-Ain FC", "نادي العين"],
+    "Al Quwa Al Jawiya": ["Al Quwa Al Jawiya", "Al-Quwa Al-Jawiya", "القوة الجوية"],
     "Esteghlal": ["Esteghlal", "استقلال"],
-    "Tractor": ["Tractor", "تراکتور"],
+    "Tractor": ["Tractor FC", "Tractor SC", "تراکتور"],
     "Al Gharafa": ["Al Gharafa", "الغرافة"],
     "Al Wasl": ["Al Wasl", "الوصل"],
     "Al Ahli Saudi": ["Al Ahli Saudi", "Al Ahli", "الأهلي السعودي"],
     "Al Qadsiah": ["Al Qadsiah", "القادسية"],
 }
+
+FOOTBALL_TERMS = ["football", "soccer", "goalkeeper", "striker", "midfielder", "defender", "champions league", "afc", "starting xi", "starting lineup", "كرة القدم", "حارس", "لاعب", "دوري", "فوتبال", "بازیکن", "دروازه", "サッカー", "選手", "축구", "선수", "sepak bola", "sepakbola", "pemain", "ฟุตบอล", "นักเตะ", "足球", "球员", "球員", "bóng đá", "cầu thủ"]
+# Broad location words are permitted for relevance only with football context.
+MATCH_NAMES = {"Tai Po": ["Tai Po", "大埔"], "Gangwon": ["Gangwon", "강원"], "Al Ain": ["Al Ain", "Al-Ain", "العين"], "Tractor": ["Tractor", "تراکتور"]}
+SIGNALS["SQUAD"] += ["cedera", "absen", "skorsing", "diragukan", "負傷", "怪我", "出場停止", "離脱", "부상", "결장", "징계", "บาดเจ็บ", "ติดโทษแบน", "伤病", "受伤", "受傷", "缺阵", "缺陣", "停赛", "停賽", "chấn thương", "vắng mặt", "treo giò"]
+SIGNALS["LINEUP"] += ["susunan pemain", "rotasi pemain", "スタメン", "先発", "선발 명단", "โรเตชั่น", "首发", "首發", "đội hình xuất phát"]
+
+def _normalized(text):
+    text=html.unescape(unicodedata.normalize("NFKC", text)).casefold()
+    text=re.sub(r"[\u064b-\u065f\u0670]", "", text).replace("ـ", "")
+    text=text.translate(str.maketrans({"أ":"ا", "إ":"ا", "آ":"ا", "ي":"ی", "ك":"ک"}))
+    return re.sub(r"[\W_]+", " ", text, flags=re.UNICODE).strip()
+
+def _contains(text, term):
+    term=_normalized(term)
+    # Word boundaries for Latin names; native scripts may be concatenated.
+    if re.search(r"[a-z]", term):
+        return bool(re.search(r"(?<!\w)"+re.escape(term)+r"(?!\w)", text))
+    return term in text
+
+def _relevance_reason(team, item):
+    txt=_normalized(item["title"]+" "+item["summary"])
+    names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team]))
+    if not any(_contains(txt, name) for name in names):
+        return "wrong_team"
+    if not any(_contains(txt, word) for word in FOOTBALL_TERMS):
+        return "not_football"
+    return None
 
 def _team_query(team):
     return "(" + " OR ".join('"' + name + '"' for name in DISCOVERY_NAMES.get(team, [team])) + ")"
@@ -2200,7 +2234,7 @@ def _publisher_domains(team):
     return domains[:12]
 
 def _google_news_feed(team):
-    q=f'{_team_query(team)} when:2d'
+    q=f'{_team_query(team)} (football OR soccer OR AFC OR فوتبال OR \"كرة القدم\" OR 축구 OR 足球 OR サッカー OR \"sepak bola\") when:2d'
     return "https://news.google.com/rss/search?q="+quote(q)+"&hl=en&gl=US&ceid=US:en"
 
 def _source_search_feeds(team):
@@ -2251,7 +2285,7 @@ def registry_stats():
 def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
-    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "no_signal", "below_score", "already_seen")}
+    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen")}
     started=time.monotonic(); failures=0; stopped=False
     # Check all general team feeds before optional publisher searches.
     work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
@@ -2283,6 +2317,9 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     counts["missing_date"]+=1; continue
                 if not _recent(item,now):
                     counts["outside_window"]+=1; continue
+                reason=_relevance_reason(team,item)
+                if reason:
+                    counts[reason]+=1; continue
                 tags=_classify(item)
                 if not HIGH_PRIORITY.intersection(tags):
                     counts["no_signal"]+=1; continue
