@@ -2280,7 +2280,7 @@ class _ArticleText(HTMLParser):
             self.parts.append(data.strip())
             if self.article: self.article_parts.append(data.strip())
     def text(self):
-        return " ".join(self.article_parts or self.parts)[:60000]
+        return "\n".join(self.article_parts or self.parts)[:60000]
 
 
 def _read_article(item, cache):
@@ -2291,7 +2291,7 @@ def _read_article(item, cache):
             from googlenewsdecoder import gnewsdecoder
             decoded=gnewsdecoder(link, interval=0)
             if not decoded.get("success") or not decoded.get("decoded_url"):
-                raise ValueError(f"Google News decode failed: {decoded}") 
+                raise ValueError("Google News URL could not be resolved")
             link=decoded["decoded_url"]
         parsed=urlparse(link)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -2316,9 +2316,48 @@ def _read_article(item, cache):
     return result
 
 
+def _signal_evidence(item, team=None):
+    text=item["title"]+"\n"+item["summary"]+"\n"+item.get("article_text", "")
+    segments=[x.strip() for x in re.split(r"[\n]+|(?<=[.!?])\s+",text) if x.strip()]
+    names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team])) if team else []
+    evidence=[]; context=False
+    negation=re.compile(r"\b(?:no|not|without)\s+(?:\w+\s+){0,5}(?:injur\w*|suspens\w*|absen\w*)|(?:injur\w*|suspens\w*)\s+(?:\w+\s+){0,4}(?:not confirmed|have not been confirmed)|no confirmed|no new|no fresh|full strength|fully fit|injury free",re.I)
+    speculation=re.compile(r"possible|probable|predicted|prediction|expected (?:line|starting|xi)|not (?:yet )?(?:released|confirmed)|will be added|as it becomes available",re.I)
+    strong={
+        "SQUAD":r"\b(?:ruled out|sidelined|will miss|set to miss|suspended|unavailable|injured|suffered (?:an? )?injury|doubtful)\b",
+        "LINEUP":r"\b(?:confirmed (?:starting (?:xi|lineup)|lineup)|official (?:starting (?:xi|lineup)|lineup)|(?:rested|rotation|rotated) (?:for|against)|(?:rests|resting) (?:key|star|first team))\b",
+        "TRAVEL":r"\b(?:flight delayed|travel disruption|visa issue|stranded|arrived late|travel delay)\b",
+    }
+    for segment in segments:
+        normalized=_normalized(segment)
+        mentioned=any(_contains(normalized,n) for n in names) if names else True
+        if mentioned: context=True
+        # Another club heading ends inherited team context.
+        elif team and len(segment)<100 and any(_contains(normalized,t) for t in TARGET_TEAMS if t!=team): context=False
+        if not (mentioned or context) or len(segment)>1200: continue
+        if negation.search(segment) or speculation.search(segment): continue
+        for kind,pattern in strong.items():
+            if re.search(pattern,segment,re.I):
+                evidence.append((kind,segment[:550])); break
+    return evidence
+
+
 def _classify(item):
-    txt=(item["title"]+" "+item["summary"]+" "+item.get("article_text", "")).lower()
-    return [kind for kind,words in SIGNALS.items() if any(w.lower() in txt for w in words)]
+    return list(dict.fromkeys(kind for kind,_ in _signal_evidence(item)))
+
+
+def _past_fixture(item, now):
+    # Only a labelled fixture date, not publication dates or historical results.
+    text=item.get("article_text", "")
+    match=re.search(r"(?:kick[ -]?off|today.s game[^\n]{0,100}?kick off|match date|fixture date)[^\n]{0,40}?(\d{1,2})[ /-]+([A-Za-z]{3,9})[ /,-]+(20\d{2})",text,re.I)
+    if not match: return False
+    try:
+        date=datetime.strptime(" ".join(match.groups()),"%d %b %Y").date()
+    except ValueError:
+        try: date=datetime.strptime(" ".join(match.groups()),"%d %B %Y").date()
+        except ValueError: return False
+    return date < now.date()
+
 
 def _importance_score(tags,title,summary):
     txt=(title+" "+summary).lower(); score=0
@@ -2336,7 +2375,7 @@ def registry_stats():
 def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
-    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen")}
+    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen", "past_fixture")}
     samples={}
     article_cache={}
     article_reads=0
@@ -2406,7 +2445,11 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if reason:
                     counts[reason]+=1
                     record_sample(reason,team,item); continue
-                tags=_classify(item)
+                if _past_fixture(item,now):
+                    counts["past_fixture"]+=1
+                    record_sample("past_fixture",team,item); continue
+                evidence=_signal_evidence(item,team)
+                tags=list(dict.fromkeys(kind for kind,_ in evidence))
                 if not HIGH_PRIORITY.intersection(tags):
                     counts["no_signal"]+=1
                     record_sample("no_signal",team,item); continue
@@ -2419,8 +2462,10 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if digest in state:
                     counts["already_seen"]+=1; continue
                 candidates+=1
+                proof="\n".join("• "+sentence for _,sentence in evidence[:2])
                 msg=(f"⚠️ AFC EARLY INFO | UNVERIFIED\n🏟️ Team: {team}\n"
-                     f"🔎 Signals: {', '.join(tags)} | Score: {score}/10\n"
+                     f"🔎 Signals: {', '.join(tags)}\n"
+                     f"📌 Evidence:\n{proof}\n"
                      f"📰 {item['title'][:180]}\n🔗 {item.get('article_url') or item['link']}\n"
                      "⚠️ Candidate only: verify primary source, player identity, and match relevance.")
                 if dry_run: alerts+=1; continue
