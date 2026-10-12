@@ -2291,7 +2291,7 @@ def _read_article(item, cache):
             from googlenewsdecoder import gnewsdecoder
             decoded=gnewsdecoder(link, interval=0)
             if not decoded.get("status") or not decoded.get("decoded_url"):
-                raise ValueError("Google News URL could not be resolved")
+                raise ValueError(f"Google News decode failed: {decoded}") 
             link=decoded["decoded_url"]
         parsed=urlparse(link)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
