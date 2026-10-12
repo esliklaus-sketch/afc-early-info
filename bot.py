@@ -918,8 +918,7 @@ def main():
 
     seen = load_seen()
 
-    send_telegram("✅ TEST: Dërgimi në Telegram funksionon.") 
-
+  # send_telegram("✅ TEST: Dërgimi në Telegram funksionon.")
 
     try:
 
