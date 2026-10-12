@@ -2166,6 +2166,53 @@ MATCH_NAMES = {"Tai Po": ["Tai Po", "大埔"], "Gangwon": ["Gangwon", "강원"],
 SIGNALS["SQUAD"] += ["cedera", "absen", "skorsing", "diragukan", "負傷", "怪我", "出場停止", "離脱", "부상", "결장", "징계", "บาดเจ็บ", "ติดโทษแบน", "伤病", "受伤", "受傷", "缺阵", "缺陣", "停赛", "停賽", "chấn thương", "vắng mặt", "treo giò"]
 SIGNALS["LINEUP"] += ["susunan pemain", "rotasi pemain", "スタメン", "先発", "선발 명단", "โรเตชั่น", "首发", "首發", "đội hình xuất phát"]
 
+# Native names are shared by discovery and relevance filters.
+DISCOVERY_NAMES.update({
+    "BG Pathum United": ["BG Pathum United", "บีจี ปทุม ยูไนเต็ด"],
+    "Buriram United": ["Buriram United", "บุรีรัมย์ ยูไนเต็ด"],
+    "Ratchaburi": ["Ratchaburi FC", "Ratchaburi", "ราชบุรี เอฟซี"],
+    "Port FC": ["Port FC", "การท่าเรือ เอฟซี"],
+    "Shanghai Shenhua": ["Shanghai Shenhua", "上海申花"],
+    "Shanghai Port": ["Shanghai Port", "上海海港"],
+    "Beijing Guoan": ["Beijing Guoan", "北京国安", "北京國安"],
+    "Kitchee": ["Kitchee", "傑志", "杰志"],
+    "Kashima Antlers": ["Kashima Antlers", "鹿島アントラーズ"],
+    "Kyoto Sanga": ["Kyoto Sanga", "京都サンガ"],
+    "Gamba Osaka": ["Gamba Osaka", "ガンバ大阪"],
+    "Kashiwa Reysol": ["Kashiwa Reysol", "柏レイソル"],
+    "Vissel Kobe": ["Vissel Kobe", "ヴィッセル神戸"],
+    "Machida Zelvia": ["Machida Zelvia", "町田ゼルビア"],
+    "FC Seoul": ["FC Seoul", "FC서울", "FC 서울"],
+    "Daejeon Hana Citizen": ["Daejeon Hana Citizen", "대전하나시티즌", "대전 하나 시티즌"],
+    "Pohang Steelers": ["Pohang Steelers", "포항스틸러스", "포항 스틸러스"],
+    "Jeonbuk Hyundai Motors": ["Jeonbuk Hyundai Motors", "전북현대", "전북 현대"],
+    "Cong An Ha Noi": ["Cong An Ha Noi", "Công an Hà Nội", "CAHN"],
+    "The Cong Viettel": ["The Cong Viettel", "Thể Công Viettel"],
+    "Persib Bandung": ["Persib Bandung", "Persib"],
+    "Johor Darul Tazim": ["Johor Darul Tazim", "Johor Darul Ta’zim", "JDT"],
+})
+TEAM_NEWS_LOCALES = {}
+for _teams, _locale in [
+    (["BG Pathum United", "Buriram United", "Ratchaburi", "Port FC"], ("th", "TH")),
+    (["Shanghai Shenhua", "Shanghai Port", "Beijing Guoan"], ("zh-CN", "CN")),
+    (["Tai Po", "Kitchee"], ("zh-TW", "HK")),
+    (["Kashima Antlers", "Kyoto Sanga", "Gamba Osaka", "Kashiwa Reysol", "Vissel Kobe", "Machida Zelvia"], ("ja", "JP")),
+    (["FC Seoul", "Daejeon Hana Citizen", "Pohang Steelers", "Jeonbuk Hyundai Motors", "Gangwon"], ("ko", "KR")),
+    (["Cong An Ha Noi", "The Cong Viettel"], ("vi", "VN")),
+    (["Persib Bandung"], ("id", "ID")),
+    (["Johor Darul Tazim", "Kuching City"], ("ms", "MY")),
+]:
+    for _team in _teams:
+        TEAM_NEWS_LOCALES[_team] = _locale
+
+# Specific availability claims; generic injury words alone are insufficient.
+NATIVE_CLAIMS = {
+    "SQUAD": ["absen", "cedera", "skorsing", "บาดเจ็บ", "ติดโทษแบน", "欠場", "負傷", "出場停止", "離脱", "부상", "결장", "출전 정지", "受伤", "受傷", "缺阵", "缺陣", "停赛", "停賽", "chấn thương", "vắng mặt", "treo giò", "يغيب", "غياب", "موقوف", "محروم", "مصدومیت", "آسیب دیدگی"],
+    "LINEUP": ["susunan pemain resmi", "รายชื่อ 11 ตัวจริง", "スターティングメンバー発表", "선발 명단 발표", "首发名单", "首發名單", "đội hình chính thức", "التشكيلة الرسمية", "ترکیب اصلی"],
+    "TRAVEL": ["penerbangan tertunda", "เที่ยวบินล่าช้า", "航班延误", "航班延誤", "تأخر الرحلة"],
+}
+NATIVE_NEGATIONS = ["tidak cedera", "tidak ada cedera", "ไม่มีอาการบาดเจ็บ", "負傷者なし", "부상 없음", "无伤病", "無傷病", "không chấn thương", "لا توجد إصابات"]
+
 def _normalized(text):
     text=html.unescape(unicodedata.normalize("NFKC", text)).casefold()
     text=re.sub(r"[\u064b-\u065f\u0670]", "", text).replace("ـ", "")
@@ -2236,7 +2283,7 @@ def _publisher_domains(team):
     return domains[:12]
 
 def _google_news_feed(team):
-    q=f'{_team_query(team)} (football OR soccer OR AFC OR فوتبال OR \"كرة القدم\" OR 축구 OR 足球 OR サッカー OR \"sepak bola\") when:2d'
+    q=f'{_team_query(team)} (football OR soccer OR AFC OR فوتبال OR \"كرة القدم\" OR 축구 OR 足球 OR サッカー OR \"sepak bola\" OR ฟุตบอล OR \"bóng đá\") when:2d'
     return "https://news.google.com/rss/search?q="+quote(q)+"&hl=en&gl=US&ceid=US:en"
 
 def _source_search_feeds(team):
@@ -2245,13 +2292,27 @@ def _source_search_feeds(team):
         return []
     sites = " OR ".join("site:" + d for d in domains)
     q = f'{_team_query(team)} ({sites}) when:2d'
-    return ["https://news.google.com/rss/search?q=" + quote(q)
-            + "&hl=en&gl=US&ceid=US:en"]
+    feeds = ["https://news.google.com/rss/search?q=" + quote(q) + "&hl=en&gl=US&ceid=US:en"]
+    if team in TEAM_NEWS_LOCALES:
+        language, country = TEAM_NEWS_LOCALES[team]
+        feeds.append("https://news.google.com/rss/search?q=" + quote(q)
+                     + "&hl=" + language + "&gl=" + country + "&ceid=" + country + ":" + language)
+    return feeds
 
 def _feed_items(url):
-    r=requests.get(url, timeout=TIMEOUT, headers={"User-Agent":"AFC-Early-Info/2.0"})
-    r.raise_for_status()
-    feed=feedparser.parse(r.content)
+    for attempt in range(2):
+        try:
+            with requests.get(url, timeout=(5, 20), headers={"User-Agent":"AFC-Early-Info/2.0"}) as r:
+                r.raise_for_status()
+                content=r.content
+            break
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            if attempt == 1:
+                raise
+        except requests.exceptions.HTTPError as exc:
+            if attempt == 1 or exc.response is None or exc.response.status_code not in (429, 500, 502, 503, 504):
+                raise
+    feed=feedparser.parse(content)
     if feed.bozo and not feed.entries:
         raise ValueError(f"Invalid/unreadable feed: {feed.bozo_exception}")
     for item in feed.entries[:15]:
@@ -2340,11 +2401,18 @@ def _signal_evidence(item, team=None):
         if mentioned: context=True
         # Another club heading ends inherited team context.
         elif team and len(segment)<100 and any(_contains(normalized,t) for t in TARGET_TEAMS if t!=team): context=False
-        if not (mentioned or context) or len(segment)>1200: continue
+        # Never inherit a team from an earlier headline or unrelated paragraph.
+        if not mentioned or len(segment)>1200: continue
+        if not any(_contains(normalized, word) for word in FOOTBALL_TERMS): continue
+        if any(_contains(normalized, word) for word in NATIVE_NEGATIONS): continue
         if negation.search(segment) or speculation.search(segment): continue
         for kind,pattern in strong.items():
             if re.search(pattern,segment,re.I):
                 evidence.append((kind,segment[:550])); break
+        else:
+            for kind, claims in NATIVE_CLAIMS.items():
+                if any(_contains(normalized, claim) for claim in claims):
+                    evidence.append((kind, segment[:550])); break
     return evidence
 
 
@@ -2410,7 +2478,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
         try: return team,list(_feed_items(url)),None
         except Exception as exc: return team,[],str(exc)[:180]
     # Complete discovery for every team before any article extraction.
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         collected=list(pool.map(collect_feed,work))
     checked_feeds=len(collected)
     queues={team:[] for team in TARGET_TEAMS}
