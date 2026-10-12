@@ -918,7 +918,7 @@ def main():
 
     seen = load_seen()
 
-        # startup_message()
+    send_telegram("✅ TEST: Dërgimi në Telegram funksionon.") 
 
 
     try:
