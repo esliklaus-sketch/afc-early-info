@@ -2290,7 +2290,7 @@ def _read_article(item, cache):
         if _host(link) == "news.google.com":
             from googlenewsdecoder import gnewsdecoder
             decoded=gnewsdecoder(link, interval=0)
-            if not decoded.get("status") or not decoded.get("decoded_url"):
+            if not decoded.get("success") or not decoded.get("decoded_url"):
                 raise ValueError(f"Google News decode failed: {decoded}") 
             link=decoded["decoded_url"]
         parsed=urlparse(link)
