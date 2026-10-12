@@ -4,6 +4,7 @@ All 291 recovered team-source records are embedded below.
 Important: embedded source != automatically machine-readable. Social URLs remain discovery references.
 """
 import html
+from html.parser import HTMLParser
 import unicodedata
 import hashlib
 import json
@@ -2178,7 +2179,7 @@ def _contains(text, term):
     return term in text
 
 def _relevance_reason(team, item):
-    txt=_normalized(item["title"]+" "+item["summary"])
+    txt=_normalized(item["title"]+" "+item["summary"]+" "+item.get("article_text", ""))
     names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team]))
     if not any(_contains(txt, name) for name in names):
         return "wrong_team"
@@ -2265,8 +2266,58 @@ def _recent(item, now):
     except (ValueError,TypeError): return False
     return now-timedelta(hours=36) <= published <= now+timedelta(minutes=15)
 
+class _ArticleText(HTMLParser):
+    def __init__(self):
+        super().__init__(); self.parts=[]; self.hidden=0; self.article=0; self.article_parts=[]
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "nav", "header", "footer", "aside"}: self.hidden+=1
+        if tag == "article": self.article+=1
+    def handle_endtag(self, tag):
+        if tag in {"script", "style", "nav", "header", "footer", "aside"}: self.hidden=max(0,self.hidden-1)
+        if tag == "article": self.article=max(0,self.article-1)
+    def handle_data(self, data):
+        if not self.hidden and data.strip():
+            self.parts.append(data.strip())
+            if self.article: self.article_parts.append(data.strip())
+    def text(self):
+        return " ".join(self.article_parts or self.parts)[:60000]
+
+
+def _read_article(item, cache):
+    link=item["link"]
+    if link in cache: return cache[link]
+    try:
+        if _host(link) == "news.google.com":
+            from googlenewsdecoder import gnewsdecoder
+            decoded=gnewsdecoder(link, interval=0)
+            if not decoded.get("status") or not decoded.get("decoded_url"):
+                raise ValueError("Google News URL could not be resolved")
+            link=decoded["decoded_url"]
+        parsed=urlparse(link)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("Invalid article URL")
+        response=requests.get(link, timeout=TIMEOUT, headers={"User-Agent":"AFC-Early-Info/2.1"}, stream=True)
+        try:
+            response.raise_for_status()
+            if "html" not in response.headers.get("Content-Type", "").lower():
+                raise ValueError("Article is not HTML")
+            raw=bytearray()
+            for chunk in response.iter_content(16384):
+                raw.extend(chunk)
+                if len(raw)>1500000: raise ValueError("Article exceeds size limit")
+            parser=_ArticleText(); parser.feed(raw.decode(response.encoding or "utf-8",errors="replace"))
+            body=parser.text()
+            if len(body)<100: raise ValueError("Article text unavailable")
+            result=(body, link, None)
+        finally: response.close()
+    except Exception as exc:
+        result=("", None, type(exc).__name__+": "+str(exc)[:180])
+    cache[item["link"]]=result
+    return result
+
+
 def _classify(item):
-    txt=(item["title"]+" "+item["summary"]).lower()
+    txt=(item["title"]+" "+item["summary"]+" "+item.get("article_text", "")).lower()
     return [kind for kind,words in SIGNALS.items() if any(w.lower() in txt for w in words)]
 
 def _importance_score(tags,title,summary):
@@ -2287,6 +2338,9 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
     counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen")}
     samples={}
+    article_cache={}
+    article_reads=0
+    article_failures=0
     sample_keys=set()
     focus={"Esteghlal", "Al Gharafa", "Al Wasl", "Al Ahli Saudi", "Tai Po", "Tractor", "Gangwon"}
     def record_sample(reason, team, item):
@@ -2332,6 +2386,22 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if not _recent(item,now):
                     counts["outside_window"]+=1
                     record_sample("outside_window",team,item); continue
+                # First require an explicit team match in the feed, before fetching.
+                feed_text=_normalized(item["title"]+" "+item["summary"])
+                names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team]))
+                if not any(_contains(feed_text,name) for name in names):
+                    counts["wrong_team"]+=1
+                    record_sample("wrong_team",team,item); continue
+                if time.monotonic()-started >= MAX_SCAN_SECONDS:
+                    stopped=True; break
+                body, article_url, article_error=_read_article(item,article_cache)
+                if article_error:
+                    article_failures+=1
+                    print(f"[AFC PRESS] ARTICLE_UNREADABLE: {team} | {item['title'][:100]} | {article_error}",flush=True)
+                else:
+                    article_reads+=1
+                    item["article_text"]=body
+                    item["article_url"]=article_url
                 reason=_relevance_reason(team,item)
                 if reason:
                     counts[reason]+=1
@@ -2340,7 +2410,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if not HIGH_PRIORITY.intersection(tags):
                     counts["no_signal"]+=1
                     record_sample("no_signal",team,item); continue
-                score=_importance_score(tags,item["title"],item["summary"])
+                score=_importance_score(tags,item["title"],item["summary"]+" "+item.get("article_text", ""))
                 if score < MIN_ALERT_SCORE:
                     counts["below_score"]+=1; continue
                 norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
@@ -2351,7 +2421,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 candidates+=1
                 msg=(f"⚠️ AFC EARLY INFO | UNVERIFIED\n🏟️ Team: {team}\n"
                      f"🔎 Signals: {', '.join(tags)} | Score: {score}/10\n"
-                     f"📰 {item['title'][:180]}\n🔗 {item['link']}\n"
+                     f"📰 {item['title'][:180]}\n🔗 {item.get('article_url') or item['link']}\n"
                      "⚠️ Candidate only: verify primary source, player identity, and match relevance.")
                 if dry_run: alerts+=1; continue
                 try: delivered=send_message(msg)
@@ -2369,6 +2439,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if datetime.fromisoformat(v)>=cutoff: retained[k]=v
             except (TypeError,ValueError): pass
         _save_state(retained)
+    print(f"[AFC PRESS] article_reads={article_reads} article_failures={article_failures}",flush=True)
     print("[AFC PRESS] diagnostics="+json.dumps(counts,sort_keys=True),flush=True)
     st=registry_stats()
     print(f"[AFC PRESS] records={st['embedded_records']} teams={st['target_teams']} unique_urls={st['unique_urls']} feeds={checked_feeds} incomplete={stopped} candidates={candidates} {'dry_run' if dry_run else 'sent'}={alerts}",flush=True)
