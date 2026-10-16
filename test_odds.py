@@ -1,4 +1,3 @@
-
 import os
 import json
 import requests
@@ -17,6 +16,7 @@ LEAGUES = {
 
 LINES = {"2.5", "3.5", "4.5", "5.5", "6.5", "7.5"}
 
+
 def api_get(endpoint, params):
     response = requests.get(
         BASE_URL + endpoint,
@@ -31,6 +31,7 @@ def api_get(endpoint, params):
         raise RuntimeError(str(data["errors"]))
 
     return data.get("response", [])
+
 
 def main():
     if not API_KEY:
@@ -103,10 +104,8 @@ def main():
         "records": records,
     }
 
-    
-timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-filename = f"data/odds_{timestamp}.json"
-
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"data/odds_{timestamp}.json"
 
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
@@ -115,6 +114,7 @@ filename = f"data/odds_{timestamp}.json"
     print("Fixtures checked:", checked)
     print("Odds records:", len(records))
     print("File:", filename)
+
 
 if __name__ == "__main__":
     main()
