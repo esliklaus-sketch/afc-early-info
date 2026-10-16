@@ -9,6 +9,10 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: test-football-odds
+  cancel-in-progress: false
+
 jobs:
   test-odds:
     runs-on: ubuntu-latest
@@ -26,10 +30,20 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Analyze current and previous seasons
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: python analyze_leagues.py
+
       - name: Capture current odds
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python test_odds.py
+
+      - name: Run experimental value model
+        run: |
+          set -euo pipefail
+          python value_model.py | tee value_model_report.txt
 
       - name: Download previous successful odds snapshot
         id: previous
@@ -38,30 +52,61 @@ jobs:
           script: |
             const fs = require('fs');
             const { owner, repo } = context.repo;
-            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-              owner, repo, workflow_id: 'test-odds.yml', status: 'success', per_page: 30
-            });
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: 'test-odds.yml',
+                status: 'success',
+                per_page: 30
+              }
+            );
+
             for (const run of runs) {
               if (run.id === context.runId) continue;
-              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
-                owner, repo, run_id: run.id, per_page: 100
-              });
-              const artifact = artifacts.find(a => a.name === 'odds-snapshot' && !a.expired);
+
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                {
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100
+                }
+              );
+
+              const artifact = artifacts.find(
+                a => a.name === 'odds-snapshot' && !a.expired
+              );
+
               if (!artifact) continue;
+
               const download = await github.rest.actions.downloadArtifact({
-                owner, repo, artifact_id: artifact.id, archive_format: 'zip'
+                owner,
+                repo,
+                artifact_id: artifact.id,
+                archive_format: 'zip'
               });
-              fs.writeFileSync('previous_odds.zip', Buffer.from(download.data));
+
+              fs.writeFileSync(
+                'previous_odds.zip',
+                Buffer.from(download.data)
+              );
+
               core.setOutput('found', 'true');
               core.info(`Previous snapshot from run ${run.id}`);
               return;
             }
+
             core.setOutput('found', 'false');
-            core.info('No previous snapshot found; comparison skipped for this run.');
+            core.info('No previous snapshot found; comparison skipped.');
 
       - name: Compare odds with previous snapshot
         if: steps.previous.outputs.found == 'true'
         run: |
+          set -euo pipefail
           current_file=$(find data -maxdepth 1 -name 'odds_*.json' -type f | sort | tail -n 1)
           test -n "$current_file"
           python compare_odds.py previous_odds.zip "$current_file" --min-change 0 | tee odds_comparison.txt
@@ -73,6 +118,26 @@ jobs:
           name: odds-snapshot
           path: data/odds_*.json
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload league analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: league-analysis
+          path: data/league_analysis.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload value analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-analysis
+          path: |
+            data/value_analysis.json
+            value_model_report.txt
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload comparison report
