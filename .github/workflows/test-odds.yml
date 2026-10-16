@@ -45,6 +45,11 @@ jobs:
           set -euo pipefail
           python value_model.py | tee value_model_report.txt
 
+      - name: Backtest model probabilities
+        run: |
+          set -euo pipefail
+          python backtest_model.py | tee backtest_report.txt
+
       - name: Download previous successful odds snapshot
         id: previous
         uses: actions/github-script@v7
@@ -137,6 +142,17 @@ jobs:
           path: |
             data/value_analysis.json
             value_model_report.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload backtest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results
+          path: |
+            data/backtest_results.json
+            backtest_report.txt
           if-no-files-found: warn
           retention-days: 30
 
