@@ -103,7 +103,10 @@ def main():
         "records": records,
     }
 
-    filename = "data/odds_snapshot.json"
+    
+timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+filename = f"data/odds_{timestamp}.json"
+
 
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
