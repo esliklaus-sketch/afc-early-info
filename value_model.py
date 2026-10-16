@@ -7,9 +7,9 @@ from pathlib import Path
 
 LINES = (2.5, 3.5, 4.5, 5.5, 6.5, 7.5)
 
-# Parametra fillestarë; do të vlerësohen me teste historike.
 PREVIOUS_WEIGHT = 0.5
 PRIOR_MATCHES = 5.0
+MIN_VENUE_MATCHES = 5
 
 
 def parse_date(value):
@@ -35,7 +35,6 @@ def historical_rows(league, cutoff):
         for match in season.get("fixtures", []):
             fixture_id = match["fixture_id"]
 
-            # Të dhënat përmbajnë orën e nisjes, jo të përfundimit.
             if parse_date(match["date"]) > cutoff - timedelta(hours=3):
                 continue
 
@@ -49,7 +48,6 @@ def historical_rows(league, cutoff):
 
 
 def find_team_id(league, name):
-    # Vetëm përputhje të sakta; nuk hamendësojmë emra të ngjashëm.
     matches = [
         team["id"]
         for team in league.get("teams", {}).values()
@@ -88,8 +86,12 @@ def estimate_goals(league, home_name, away_name, cutoff):
             if m[f"{venue}_id"] == team_id
         ]
 
-        if not selected:
-            raise ValueError(f"No {venue} history for team {team_id}")
+        if len(selected) < MIN_VENUE_MATCHES:
+            raise ValueError(
+                f"Insufficient {venue} history for team {team_id}: "
+                f"{len(selected)} matches; "
+                f"minimum {MIN_VENUE_MATCHES}"
+            )
 
         opposite = "away" if venue == "home" else "home"
         scored_base = home_base if venue == "home" else away_base
@@ -172,8 +174,10 @@ def main():
     }
 
     predictions = {}
+    prediction_errors = {}
     results = []
     skipped = Counter()
+    excluded_fixtures = {}
     seen = set()
 
     for record in snapshot.get("records", []):
@@ -221,12 +225,29 @@ def main():
             )
 
             if prediction_key not in predictions:
-                predictions[prediction_key] = estimate_goals(
-                    leagues[league_id],
-                    record["home"],
-                    record["away"],
-                    captured,
-                )
+                if prediction_key not in prediction_errors:
+                    try:
+                        predictions[prediction_key] = estimate_goals(
+                            leagues[league_id],
+                            record["home"],
+                            record["away"],
+                            captured,
+                        )
+                    except (KeyError, ValueError, TypeError) as error:
+                        prediction_errors[prediction_key] = str(error)
+
+                if prediction_key in prediction_errors:
+                    reason = prediction_errors[prediction_key]
+                    skipped["prediction_unavailable"] += 1
+                    excluded_fixtures[
+                        f"{league_id}:{record['fixture_id']}"
+                    ] = {
+                        "fixture_id": record["fixture_id"],
+                        "home": record["home"],
+                        "away": record["away"],
+                        "reason": reason,
+                    }
+                    continue
 
             estimate = predictions[prediction_key]
             under = under_probability(
@@ -257,7 +278,7 @@ def main():
     results.sort(key=lambda r: r["model_ev_pct"], reverse=True)
 
     output = {
-        "model_version": "poisson_baseline_v1",
+        "model_version": "poisson_baseline_v1_min_history",
         "status": "EXPERIMENTAL_UNVALIDATED",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "odds_file": str(odds_path),
@@ -270,12 +291,14 @@ def main():
         "parameters": {
             "previous_season_weight": PREVIOUS_WEIGHT,
             "prior_matches": PRIOR_MATCHES,
+            "minimum_venue_matches": MIN_VENUE_MATCHES,
         },
         "evaluated_records": len(results),
         "evaluated_fixtures": len({
             r["fixture_id"] for r in results
         }),
         "skipped": dict(skipped),
+        "excluded_fixtures": list(excluded_fixtures.values()),
         "results": results,
     }
 
@@ -289,9 +312,16 @@ def main():
 
     print("EXPERIMENTAL VALUE MODEL")
     print(f"Odds snapshot: {snapshot['captured_at']}")
+    print(f"Minimum venue history: {MIN_VENUE_MATCHES}")
     print(f"Evaluated records: {len(results)}")
     print(f"Evaluated fixtures: {output['evaluated_fixtures']}")
-    print(f"Skipped: {dict(skipped)}")
+    print(f"Skipped records: {dict(skipped)}")
+
+    for match in excluded_fixtures.values():
+        print(
+            f"EXCLUDED: {match['home']} vs {match['away']} | "
+            f"{match['reason']}"
+        )
 
     for record in results[:10]:
         print(
