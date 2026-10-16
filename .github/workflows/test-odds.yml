@@ -29,6 +29,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: odds-snapshot
-          path: data/odds_snapshot.json
+          path: data/odds_*.json
           if-no-files-found: error
 
