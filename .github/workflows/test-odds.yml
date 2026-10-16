@@ -24,3 +24,11 @@ jobs:
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python test_odds.py
+        
+      - name: Upload odds snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-snapshot
+          path: data/odds_snapshot.json
+          if-no-files-found: error
+
