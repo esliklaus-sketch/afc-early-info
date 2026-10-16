@@ -1,5 +1,6 @@
 
 import os
+import json
 import requests
 from datetime import datetime, timezone
 
@@ -35,12 +36,12 @@ def main():
     if not API_KEY:
         raise RuntimeError("Missing API_FOOTBALL_KEY")
 
-    today = datetime.now(timezone.utc).date().isoformat()
-    total_fixtures = 0
-    total_with_odds = 0
+    captured_at = datetime.now(timezone.utc).isoformat()
+    records = []
+    checked = 0
 
     for league_id, league_name in LEAGUES.items():
-        print(f"\n=== {league_name} ===")
+        print(f"Checking {league_name}...")
 
         fixtures = api_get(
             "/fixtures",
@@ -48,48 +49,69 @@ def main():
         )
 
         for match in fixtures:
-            total_fixtures += 1
+            checked += 1
             fixture_id = match["fixture"]["id"]
-            home = match["teams"]["home"]["name"]
-            away = match["teams"]["away"]["name"]
-            match_date = match["fixture"]["date"]
 
-            print(f"\n{home} vs {away}")
-            print(f"Date: {match_date}")
-            print(f"Fixture ID: {fixture_id}")
+            odds_data = api_get(
+                "/odds",
+                {"fixture": fixture_id}
+            )
 
-            odds = api_get("/odds", {"fixture": fixture_id})
-
-            if not odds:
-                print("No pre-match odds available")
-                continue
-
-            total_with_odds += 1
-
-            for item in odds:
+            for item in odds_data:
                 for bookmaker in item.get("bookmakers", []):
                     for bet in bookmaker.get("bets", []):
-                        if "Over/Under" not in bet.get("name", ""):
+
+                        # Only full-time Over/Under
+                        if bet.get("name") != "Goals Over/Under":
                             continue
 
-                        values = [
-                            v for v in bet.get("values", [])
-                            if any(
-                                v.get("value", "").endswith(line)
-                                for line in LINES
-                            )
-                        ]
+                        for value in bet.get("values", []):
+                            parts = value.get("value", "").split()
 
-                        if values:
-                            print("Bookmaker:", bookmaker["name"])
-                            print("Market:", bet["name"])
-                            for v in values:
-                                print(v["value"], "=", v["odd"])
+                            if len(parts) != 2:
+                                continue
 
-    print("\n=== SUMMARY ===")
-    print("Checked at:", today)
-    print("Fixtures checked:", total_fixtures)
-    print("Fixtures with odds:", total_with_odds)
+                            side, line = parts
+
+                            if side not in ("Over", "Under"):
+                                continue
+
+                            if line not in LINES:
+                                continue
+
+                            records.append({
+                                "captured_at": captured_at,
+                                "league_id": league_id,
+                                "league": league_name,
+                                "fixture_id": fixture_id,
+                                "match_date": match["fixture"]["date"],
+                                "home": match["teams"]["home"]["name"],
+                                "away": match["teams"]["away"]["name"],
+                                "bookmaker": bookmaker["name"],
+                                "market": "Full Time Goals",
+                                "selection": side,
+                                "line": float(line),
+                                "odd": value.get("odd"),
+                            })
+
+    os.makedirs("data", exist_ok=True)
+
+    output = {
+        "captured_at": captured_at,
+        "fixtures_checked": checked,
+        "odds_records": len(records),
+        "records": records,
+    }
+
+    filename = "data/odds_snapshot.json"
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+    print("SUCCESS: Odds snapshot saved")
+    print("Fixtures checked:", checked)
+    print("Odds records:", len(records))
+    print("File:", filename)
 
 if __name__ == "__main__":
     main()
