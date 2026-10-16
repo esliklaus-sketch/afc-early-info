@@ -1,0 +1,32 @@
+
+name: Analyze Football Leagues
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Analyze leagues
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: python analyze_leagues.py
+
+      - name: Upload analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: league-analysis
+          path: data/league_analysis.json
