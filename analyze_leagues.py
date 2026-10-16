@@ -34,41 +34,44 @@ def api_get(endpoint, params):
     return data.get("response", [])
 
 
-def get_current_season(league_id):
+def get_seasons(league_id):
     leagues = api_get("/leagues", {"id": league_id})
 
     if not leagues:
         raise RuntimeError(f"League not found: {league_id}")
 
     seasons = leagues[0].get("seasons", [])
-    current = [
-        season for season in seasons
-        if season.get("current") is True
-    ]
+    current = [s for s in seasons if s.get("current") is True]
 
     if len(current) != 1:
         raise RuntimeError(
             f"Cannot identify current season: league {league_id}"
         )
 
-    season = current[0]
-    print(
-        f"Season: {season['year']} | "
-        f"Start: {season.get('start')} | "
-        f"End: {season.get('end')}",
-        flush=True,
+    current = current[0]
+    start = current.get("start")
+
+    if not start:
+        raise RuntimeError(f"Missing season start: league {league_id}")
+
+    earlier = [
+        s for s in seasons
+        if s.get("start")
+        and s["start"] < start
+        and s.get("year") != current["year"]
+    ]
+
+    previous = (
+        max(earlier, key=lambda s: s["start"]) if earlier else None
     )
-    return season["year"]
+
+    return current, previous
 
 
 def get_fixtures(league_id, season):
     return api_get(
         "/fixtures",
-        {
-            "league": league_id,
-            "season": season,
-            "status": "FT",
-        },
+        {"league": league_id, "season": season, "status": "FT"},
     )
 
 
@@ -83,18 +86,16 @@ def empty_stats():
         "goals_against": 0,
         "total_goals": 0,
     }
-
     for line in LINES:
         stats[f"over_{line_key(line)}"] = 0
-
     return stats
 
 
-def add_match(stats, goals_for, goals_against):
-    total = goals_for + goals_against
+def add_match(stats, scored, conceded):
+    total = scored + conceded
     stats["matches"] += 1
-    stats["goals_for"] += goals_for
-    stats["goals_against"] += goals_against
+    stats["goals_for"] += scored
+    stats["goals_against"] += conceded
     stats["total_goals"] += total
 
     for line in LINES:
@@ -106,20 +107,16 @@ def summarize(stats):
     result = dict(stats)
     n = stats["matches"]
 
-    result["avg_goals"] = (
-        round(stats["total_goals"] / n, 4) if n else None
-    )
-    result["avg_goals_for"] = (
-        round(stats["goals_for"] / n, 4) if n else None
-    )
-    result["avg_goals_against"] = (
-        round(stats["goals_against"] / n, 4) if n else None
-    )
+    for source, target in (
+        ("total_goals", "avg_goals"),
+        ("goals_for", "avg_goals_for"),
+        ("goals_against", "avg_goals_against"),
+    ):
+        result[target] = round(stats[source] / n, 4) if n else None
 
     for line in LINES:
         key = line_key(line)
         over = stats[f"over_{key}"]
-
         result[f"under_{key}"] = n - over
         result[f"over_{key}_pct"] = (
             round(over / n * 100, 2) if n else None
@@ -132,58 +129,58 @@ def summarize(stats):
 
 
 def analyze(fixtures):
-    league_stats = empty_stats()
-    home_goals_total = 0
-    away_goals_total = 0
+    league = empty_stats()
     teams = {}
+    records = []
     seen = set()
     skipped = 0
-    latest_match_at = None
+    home_total = 0
+    away_total = 0
 
     for match in fixtures:
         fixture = match.get("fixture") or {}
         fixture_id = fixture.get("id")
         status = (fixture.get("status") or {}).get("short")
-
-        if status != "FT":
-            skipped += 1
-            continue
-
-        if fixture_id is not None and fixture_id in seen:
-            continue
-
         goals = match.get("goals") or {}
-        home_goals = goals.get("home")
-        away_goals = goals.get("away")
-
-        match_teams = match.get("teams") or {}
-        home_team = match_teams.get("home") or {}
-        away_team = match_teams.get("away") or {}
+        sides = match.get("teams") or {}
+        home = sides.get("home") or {}
+        away = sides.get("away") or {}
+        hg = goals.get("home")
+        ag = goals.get("away")
+        date = fixture.get("date")
 
         if (
-            home_goals is None
-            or away_goals is None
-            or home_team.get("id") is None
-            or away_team.get("id") is None
+            status != "FT"
+            or fixture_id is None
+            or not date
+            or home.get("id") is None
+            or away.get("id") is None
+            or hg is None
+            or ag is None
         ):
             skipped += 1
             continue
 
-        if fixture_id is not None:
-            seen.add(fixture_id)
+        if fixture_id in seen:
+            continue
+        seen.add(fixture_id)
 
-        add_match(league_stats, home_goals, away_goals)
-        home_goals_total += home_goals
-        away_goals_total += away_goals
+        add_match(league, hg, ag)
+        home_total += hg
+        away_total += ag
 
-        match_date = fixture.get("date")
-        if match_date:
-            if latest_match_at is None or match_date > latest_match_at:
-                latest_match_at = match_date
+        records.append({
+            "fixture_id": fixture_id,
+            "date": date,
+            "home_id": home["id"],
+            "away_id": away["id"],
+            "home_goals": hg,
+            "away_goals": ag,
+        })
 
         for team, venue, scored, conceded in (
-            (home_team, "home", home_goals, away_goals),
-            (away_team, "away", away_goals, home_goals),
+            (home, "home", hg, ag),
+            (away, "away", ag, hg),
         ):
             team_id = str(team["id"])
 
@@ -199,20 +196,19 @@ def analyze(fixtures):
             add_match(teams[team_id]["overall"], scored, conceded)
             add_match(teams[team_id][venue], scored, conceded)
 
-    n = league_stats["matches"]
-    result = summarize(league_stats)
-
-    result["home_goals_total"] = home_goals_total
-    result["away_goals_total"] = away_goals_total
-    result["avg_home_goals"] = (
-        round(home_goals_total / n, 4) if n else None
-    )
-    result["avg_away_goals"] = (
-        round(away_goals_total / n, 4) if n else None
-    )
-    result["skipped_matches"] = skipped
-    result["latest_match_at"] = latest_match_at
-    result["teams"] = {}
+    records.sort(key=lambda r: r["date"])
+    n = league["matches"]
+    result = summarize(league)
+    result.update({
+        "home_goals_total": home_total,
+        "away_goals_total": away_total,
+        "avg_home_goals": round(home_total / n, 4) if n else None,
+        "avg_away_goals": round(away_total / n, 4) if n else None,
+        "skipped_matches": skipped,
+        "latest_match_at": records[-1]["date"] if records else None,
+        "fixtures": records,
+        "teams": {},
+    })
 
     for team_id, team in teams.items():
         result["teams"][team_id] = {
@@ -226,52 +222,74 @@ def analyze(fixtures):
     return result
 
 
+def collect_season(league_id, season, label):
+    print(
+        f"{label} season: {season['year']} | "
+        f"Start: {season.get('start')} | End: {season.get('end')}",
+        flush=True,
+    )
+
+    time.sleep(1)
+    stats = analyze(get_fixtures(league_id, season["year"]))
+
+    print(f"Matches: {stats['matches']}")
+    print(f"Teams: {len(stats['teams'])}")
+    print(f"Average goals: {stats['avg_goals']}")
+    print(f"Latest match: {stats['latest_match_at']}", flush=True)
+
+    if not stats["matches"]:
+        print(f"WARNING: No completed matches in {label} season.")
+
+    return {
+        "season": season["year"],
+        "season_start": season.get("start"),
+        "season_end": season.get("end"),
+        **stats,
+    }
+
+
 def main():
     if not API_KEY:
         raise RuntimeError("Missing API_FOOTBALL_KEY")
 
     output = {
-        "schema_version": 3,
+        "schema_version": 4,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "season_mode": "api_current_per_league",
+        "season_mode": "current_and_previous_separate",
         "lines": list(LINES),
         "leagues": {},
     }
 
     for league_id, name in LEAGUES.items():
-        print(f"Analyzing {name}...", flush=True)
+        print(f"\nAnalyzing {name}...", flush=True)
+        current, previous = get_seasons(league_id)
 
-        season = get_current_season(league_id)
-        time.sleep(1)
+        current_stats = collect_season(league_id, current, "Current")
+        previous_stats = None
 
-        fixtures = get_fixtures(league_id, season)
-        stats = analyze(fixtures)
+        if previous:
+            previous_stats = collect_season(
+                league_id, previous, "Previous"
+            )
+        else:
+            print("WARNING: Previous season unavailable.")
 
         output["leagues"][name] = {
             "id": league_id,
-            "season": season,
-            **stats,
+            **current_stats,
+            "previous_season": previous_stats,
         }
-
-        print(f"Matches: {stats['matches']}")
-        print(f"Teams: {len(stats['teams'])}")
-        print(f"Average goals: {stats['avg_goals']}")
-        print(f"Latest match: {stats['latest_match_at']}")
-
-        if not stats["matches"]:
-            print("WARNING: No completed matches for this season.")
 
         time.sleep(1)
 
     os.makedirs("data", exist_ok=True)
-    output_path = "data/league_analysis.json"
-    temporary_path = output_path + ".tmp"
+    path = "data/league_analysis.json"
 
-    with open(temporary_path, "w", encoding="utf-8") as f:
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    os.replace(temporary_path, output_path)
-    print(f"SUCCESS: League and team analysis saved: {output_path}")
+    os.replace(path + ".tmp", path)
+    print(f"\nSUCCESS: Current and previous seasons saved: {path}")
 
 
 if __name__ == "__main__":
