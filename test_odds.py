@@ -1,27 +1,27 @@
 
 import os
 import requests
+from datetime import datetime, timezone
 
 API_KEY = os.getenv("API_FOOTBALL_KEY")
 BASE_URL = "https://v3.football.api-sports.io"
 
-def main():
-    if not API_KEY:
-        raise RuntimeError("Missing API_FOOTBALL_KEY")
+LEAGUES = {
+    368: "Singapore",
+    274: "Indonesia",
+    296: "Thailand",
+    340: "Vietnam",
+    233: "Egypt",
+}
 
-    headers = {"x-apisports-key": API_KEY}
+LINES = {"2.5", "3.5", "4.5", "5.5", "6.5", "7.5"}
 
-    # Gjejme nje ndeshje te perfunduar ne Singapor
+def api_get(endpoint, params):
     response = requests.get(
-        f"{BASE_URL}/fixtures",
-        headers=headers,
-        params={
-            "league": 368,
-            "season": 2025,
-            "status": "FT",
-            "last": 1
-        },
-        timeout=30
+        BASE_URL + endpoint,
+        headers={"x-apisports-key": API_KEY},
+        params=params,
+        timeout=30,
     )
     response.raise_for_status()
     data = response.json()
@@ -29,43 +29,67 @@ def main():
     if data.get("errors"):
         raise RuntimeError(str(data["errors"]))
 
-    fixtures = data.get("response", [])
+    return data.get("response", [])
 
-    if not fixtures:
-        print("No fixtures found")
-        return
+def main():
+    if not API_KEY:
+        raise RuntimeError("Missing API_FOOTBALL_KEY")
 
-    match = fixtures[0]
-    fixture_id = match["fixture"]["id"]
+    today = datetime.now(timezone.utc).date().isoformat()
+    total_fixtures = 0
+    total_with_odds = 0
 
-    print("MATCH:", match["teams"]["home"]["name"],
-          "vs", match["teams"]["away"]["name"])
-    print("FIXTURE ID:", fixture_id)
+    for league_id, league_name in LEAGUES.items():
+        print(f"\n=== {league_name} ===")
 
-    # Kontrollojme kuotat historike
-    response = requests.get(
-        f"{BASE_URL}/odds",
-        headers=headers,
-        params={"fixture": fixture_id},
-        timeout=30
-    )
-    response.raise_for_status()
-    odds = response.json()
+        fixtures = api_get(
+            "/fixtures",
+            {"league": league_id, "next": 3}
+        )
 
-    if odds.get("errors"):
-        raise RuntimeError(str(odds["errors"]))
+        for match in fixtures:
+            total_fixtures += 1
+            fixture_id = match["fixture"]["id"]
+            home = match["teams"]["home"]["name"]
+            away = match["teams"]["away"]["name"]
+            match_date = match["fixture"]["date"]
 
-    print("ODDS RESULTS:", odds.get("results", 0))
+            print(f"\n{home} vs {away}")
+            print(f"Date: {match_date}")
+            print(f"Fixture ID: {fixture_id}")
 
-    for item in odds.get("response", []):
-        for bookmaker in item.get("bookmakers", []):
-            print("BOOKMAKER:", bookmaker["name"])
+            odds = api_get("/odds", {"fixture": fixture_id})
 
-            for bet in bookmaker.get("bets", []):
-                if "Over/Under" in bet["name"]:
-                    print("MARKET:", bet["name"])
-                    for value in bet.get("values", []):
-                        print(value["value"], value["odd"])
+            if not odds:
+                print("No pre-match odds available")
+                continue
+
+            total_with_odds += 1
+
+            for item in odds:
+                for bookmaker in item.get("bookmakers", []):
+                    for bet in bookmaker.get("bets", []):
+                        if "Over/Under" not in bet.get("name", ""):
+                            continue
+
+                        values = [
+                            v for v in bet.get("values", [])
+                            if any(
+                                v.get("value", "").endswith(line)
+                                for line in LINES
+                            )
+                        ]
+
+                        if values:
+                            print("Bookmaker:", bookmaker["name"])
+                            print("Market:", bet["name"])
+                            for v in values:
+                                print(v["value"], "=", v["odd"])
+
+    print("\n=== SUMMARY ===")
+    print("Checked at:", today)
+    print("Fixtures checked:", total_fixtures)
+    print("Fixtures with odds:", total_with_odds)
 
 if __name__ == "__main__":
     main()
