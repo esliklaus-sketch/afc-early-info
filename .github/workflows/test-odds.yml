@@ -1,12 +1,17 @@
-
 name: Test Football Odds
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
 
 jobs:
   test-odds:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -24,11 +29,11 @@ jobs:
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python test_odds.py
-        
+
       - name: Upload odds snapshot
         uses: actions/upload-artifact@v4
         with:
           name: odds-snapshot
           path: data/odds_*.json
           if-no-files-found: error
-
+          retention-days: 30
