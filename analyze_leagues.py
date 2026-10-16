@@ -15,8 +15,61 @@ LEAGUES = {
     233: "Egypt Premier League",
 }
 
-SEASON = 2025
 LINES = (2.5, 3.5, 4.5, 5.5, 6.5, 7.5)
+
+
+def api_get(endpoint, params):
+    response = requests.get(
+        BASE_URL + endpoint,
+        headers={"x-apisports-key": API_KEY},
+        params=params,
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if data.get("errors"):
+        raise RuntimeError(str(data["errors"]))
+
+    return data.get("response", [])
+
+
+def get_current_season(league_id):
+    leagues = api_get("/leagues", {"id": league_id})
+
+    if not leagues:
+        raise RuntimeError(f"League not found: {league_id}")
+
+    seasons = leagues[0].get("seasons", [])
+    current = [
+        season for season in seasons
+        if season.get("current") is True
+    ]
+
+    if len(current) != 1:
+        raise RuntimeError(
+            f"Cannot identify current season: league {league_id}"
+        )
+
+    season = current[0]
+    print(
+        f"Season: {season['year']} | "
+        f"Start: {season.get('start')} | "
+        f"End: {season.get('end')}",
+        flush=True,
+    )
+    return season["year"]
+
+
+def get_fixtures(league_id, season):
+    return api_get(
+        "/fixtures",
+        {
+            "league": league_id,
+            "season": season,
+            "status": "FT",
+        },
+    )
 
 
 def line_key(line):
@@ -30,8 +83,10 @@ def empty_stats():
         "goals_against": 0,
         "total_goals": 0,
     }
+
     for line in LINES:
         stats[f"over_{line_key(line)}"] = 0
+
     return stats
 
 
@@ -64,6 +119,7 @@ def summarize(stats):
     for line in LINES:
         key = line_key(line)
         over = stats[f"over_{key}"]
+
         result[f"under_{key}"] = n - over
         result[f"over_{key}_pct"] = (
             round(over / n * 100, 2) if n else None
@@ -73,26 +129,6 @@ def summarize(stats):
         )
 
     return result
-
-
-def get_fixtures(league_id):
-    response = requests.get(
-        f"{BASE_URL}/fixtures",
-        headers={"x-apisports-key": API_KEY},
-        params={
-            "league": league_id,
-            "season": SEASON,
-            "status": "FT",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    data = response.json()
-
-    if data.get("errors"):
-        raise RuntimeError(str(data["errors"]))
-
-    return data.get("response", [])
 
 
 def analyze(fixtures):
@@ -165,6 +201,7 @@ def analyze(fixtures):
 
     n = league_stats["matches"]
     result = summarize(league_stats)
+
     result["home_goals_total"] = home_goals_total
     result["away_goals_total"] = away_goals_total
     result["avg_home_goals"] = (
@@ -194,9 +231,9 @@ def main():
         raise RuntimeError("Missing API_FOOTBALL_KEY")
 
     output = {
-        "schema_version": 2,
-        "season": SEASON,
+        "schema_version": 3,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "season_mode": "api_current_per_league",
         "lines": list(LINES),
         "leagues": {},
     }
@@ -204,11 +241,15 @@ def main():
     for league_id, name in LEAGUES.items():
         print(f"Analyzing {name}...", flush=True)
 
-        fixtures = get_fixtures(league_id)
+        season = get_current_season(league_id)
+        time.sleep(1)
+
+        fixtures = get_fixtures(league_id, season)
         stats = analyze(fixtures)
 
         output["leagues"][name] = {
             "id": league_id,
+            "season": season,
             **stats,
         }
 
