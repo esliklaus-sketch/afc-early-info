@@ -30,6 +30,99 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Restore prediction history
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: 'test-odds.yml',
+                per_page: 30
+              }
+            );
+
+            runs.sort((a, b) => b.id - a.id);
+
+            for (const run of runs) {
+              if (run.id === context.runId) continue;
+              if (run.status !== 'completed') continue;
+
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                {
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100
+                }
+              );
+
+              const artifact = artifacts.find(
+                a => a.name === 'prediction-history' && !a.expired
+              );
+
+              if (!artifact) continue;
+
+              const download = await github.rest.actions.downloadArtifact({
+                owner,
+                repo,
+                artifact_id: artifact.id,
+                archive_format: 'zip'
+              });
+
+              fs.writeFileSync(
+                'prediction_history.zip',
+                Buffer.from(download.data)
+              );
+
+              core.info(`History restored from run ${run.id}`);
+              return;
+            }
+
+            core.info('No saved history found; starting a new ledger.');
+
+      - name: Extract prediction history
+        run: |
+          python - <<'PY'
+          import json
+          import zipfile
+          from pathlib import Path
+
+          archive = Path("prediction_history.zip")
+
+          if archive.exists():
+              with zipfile.ZipFile(archive) as z:
+                  names = [
+                      name for name in z.namelist()
+                      if Path(name).name == "prediction_tracking.json"
+                  ]
+                  if len(names) != 1:
+                      raise RuntimeError("Invalid prediction history archive")
+
+                  payload = z.read(names[0])
+                  state = json.loads(payload)
+
+                  if state.get("schema_version") != 1:
+                      raise RuntimeError("Unsupported history schema")
+
+                  if not isinstance(state.get("predictions"), dict):
+                      raise RuntimeError("Invalid prediction ledger")
+
+                  target = Path("data/prediction_tracking.json")
+                  target.parent.mkdir(exist_ok=True)
+                  target.write_bytes(payload)
+
+                  print(f"Restored {len(state['predictions'])} records")
+          else:
+              print("First run: no previous history archive")
+          PY
+
       - name: Analyze current and previous seasons
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
@@ -44,6 +137,13 @@ jobs:
         run: |
           set -euo pipefail
           python value_model.py | tee value_model_report.txt
+
+      - name: Track and settle predictions
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: |
+          set -euo pipefail
+          python track_predictions.py | tee prediction_tracking_report.txt
 
       - name: Backtest model probabilities
         run: |
@@ -73,6 +173,8 @@ jobs:
                 per_page: 30
               }
             );
+
+            runs.sort((a, b) => b.id - a.id);
 
             for (const run of runs) {
               if (run.id === context.runId) continue;
@@ -120,6 +222,24 @@ jobs:
           current_file=$(find data -maxdepth 1 -name 'odds_*.json' -type f | sort | tail -n 1)
           test -n "$current_file"
           python compare_odds.py previous_odds.zip "$current_file" --min-change 0 | tee odds_comparison.txt
+
+      - name: Upload prediction history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prediction-history
+          path: data/prediction_tracking.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload prediction tracking report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prediction-tracking-report
+          path: prediction_tracking_report.txt
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload odds snapshot
         if: always()
