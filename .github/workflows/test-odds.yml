@@ -144,6 +144,11 @@ jobs:
         run: |
           set -euo pipefail
           python track_predictions.py | tee prediction_tracking_report.txt
+      - name: Send value test messages to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_VALUE_CHAT_ID: ${{ secrets.TELEGRAM_VALUE_CHAT_ID }}
+        run: python send_value_telegram.py
 
       - name: Backtest model probabilities
         run: |
