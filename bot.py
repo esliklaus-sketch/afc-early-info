@@ -963,44 +963,76 @@ def requested_match(message):
 
 
 def research_news(match_name):
-    # Google News RSS: tituj dhe permbledhje, JO leximi i artikullit te plote.
-    # Nuk pretendojme se jane verifikuar formacionet ose kuotat.
+    """Find recent, relevant evidence; do not present RSS as verified reporting."""
+    from datetime import datetime, timezone
+    from email.utils import parsedate_to_datetime
+    from urllib.parse import urlparse
     teams = [x.strip() for x in re.split(r"\s+(?:vs?\.?|versus)\s+|\s*[-–—]\s*", match_name, maxsplit=1, flags=re.I) if x.strip()]
-    search_terms = [f'"{match_name}" football']
+    # Search in original spelling plus common local variants.
+    aliases = {
+        "al qadsia": ["Al Qadsiah", "Al Qadisiya", "القادسية"],
+        "al qadisa": ["Al Qadsiah", "Al Qadisiya", "القادسية"],
+        "al qadsiah": ["Al Qadisiya", "القادسية"],
+        "paro": ["Paro FC", "بارو"],
+    }
+    subjects = teams if len(teams) == 2 else [match_name]
+    terms = []
+    for team in subjects:
+        terms.append(f'"{team}" football')
+        terms.append(f'"{team}" injury OR squad OR coach OR travel')
+        for alias in aliases.get(team.lower(), [])[:3]:
+            terms.append(f'"{alias}" football')
     if len(teams) == 2:
-        search_terms.extend([f'"{teams[0]}" "{teams[1]}" football',
-                             f'"{teams[0]}" football injury squad',
-                             f'"{teams[1]}" football injury squad'])
-    else:
-        search_terms.append(f'{match_name} football injury squad coach travel')
-    evidence = []
-    seen_links = set()
-    failures = 0
-    for term in search_terms:
-        url = f"https://news.google.com/rss/search?q={quote_plus(term + ' when:7d')}&hl=en&gl=US&ceid=US:en"
+        terms.insert(0, f'"{teams[0]}" "{teams[1]}" football')
+    # Limit queries and articles to avoid long GitHub runs.
+    terms = list(dict.fromkeys(terms))[:8]
+    articles, seen_titles, failures = [], set(), 0
+    def clean(value):
+        return BeautifulSoup(value or "", "html.parser").get_text(" ", strip=True)
+    def relevant(title, summary):
+        haystack = normalize(title + " " + summary)
+        tokens = [normalize(t) for t in subjects]
+        variants = [normalize(v) for t in subjects for v in ([t] + aliases.get(t.lower(), []))]
+        # Require a team name in the headline/summary; otherwise Google may
+        # return unrelated news for generic terms such as "football".
+        return any(v and v in haystack for v in variants)
+    for term in terms:
+        url = f"https://news.google.com/rss/search?q={quote_plus(term + ' when:7d')}&hl=en-US&gl=US&ceid=US:en"
         try:
-            response = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            response = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
             response.raise_for_status()
             feed = feedparser.parse(response.content)
-            for item in feed.entries[:10]:
-                title = BeautifulSoup(item.get("title", ""), "html.parser").get_text(" ", strip=True)
-                summary = BeautifulSoup(item.get("summary", ""), "html.parser").get_text(" ", strip=True)
+            for item in feed.entries[:12]:
+                title, summary = clean(item.get("title")), clean(item.get("summary"))
                 link = item.get("link", "")
-                if not title or not link or link in seen_links:
+                if not title or not link or not relevant(title, summary):
                     continue
-                seen_links.add(link)
-                evidence.append({
-                    "title": title[:250], "summary": summary[:350],
-                    "date": item.get("published", "pa date")[:60], "url": link,
-                })
-                if len(evidence) >= 12:
+                pub = item.get("published", "")
+                try:
+                    published_at = parsedate_to_datetime(pub).astimezone(timezone.utc)
+                    if (datetime.now(timezone.utc) - published_at).days > 7:
+                        continue
+                except (ValueError, TypeError, OverflowError):
+                    pass
+                # Remove publisher suffix and deduplicate syndicated headlines.
+                headline = re.sub(r"\s+-\s+[^-]{2,55}$", "", title).strip()
+                key = re.sub(r"[^\w]+", " ", normalize(headline))[:110]
+                if key in seen_titles:
+                    continue
+                seen_titles.add(key)
+                source = clean(item.get("source", {}).get("title", "")) if isinstance(item.get("source"), dict) else ""
+                articles.append({"title": title[:250], "summary": summary[:450],
+                                 "date": pub[:65] or "date e papërcaktuar",
+                                 "source": source or "Google News RSS", "url": link})
+                if len(articles) >= 10:
                     break
         except Exception as exc:
             failures += 1
             print("[REQUEST] news search failed:", type(exc).__name__)
-        if len(evidence) >= 12:
+        if len(articles) >= 10:
             break
-    return evidence, failures
+    print(f"[REQUEST] SEARCH queries={len(terms)} relevant={len(articles)} failures={failures}")
+    return articles, failures
 
 
 def investigate_match(match_name, chat_id):
@@ -1014,6 +1046,7 @@ def investigate_match(match_name, chat_id):
         return False
     articles, failures = research_news(match_name)
     if not articles:
+        print("[REQUEST] NO_RELEVANT_EVIDENCE; AI not called")
         reply_to_chat(chat_id, (
             f"🔎 {match_name}\nNuk gjeta lajme te perdorshme ne kerkimin 7-ditor. "
             "Nuk mund te konfirmoj mungesa, udhetime ose levizje kuotash. "
@@ -1021,7 +1054,7 @@ def investigate_match(match_name, chat_id):
         ))
         return True
     evidence = "\n\n".join(
-        f"{i}. {a['title']} | {a['date']}\n{a['summary']}\n{a['url']}"
+        f"{i}. {a['title']} | {a['source']} | {a['date']}\n{a['summary']}\n{a['url']}"
         for i, a in enumerate(articles, 1)
     )
     AI_CALLS_THIS_RUN += 1
@@ -1039,10 +1072,10 @@ def investigate_match(match_name, chat_id):
     if not analysis or analysis.startswith(("Gabim:", "Analiza AI deshtoi")):
         reply_to_chat(chat_id, "Analiza AI deshtoi. Kontrollo log-un [REQUEST].")
         return True
-    links = "\n".join(f"{i}. {a['url']}" for i, a in enumerate(articles[:6], 1))
+    links = "\n".join(f"{i}. {a['title'][:85]} ({a['date']})\n{a['url']}" for i, a in enumerate(articles[:5], 1))
     reply_to_chat(chat_id, (
         f"🔎 AFC INTELLIGENCE | {match_name}\n\n{analysis}\n\n"
-        f"BURIMET E KERKIMIT (RSS, jo te verifikuara plotesisht):\n{links}\n\n"
+        f"BURIMET E KERKIMIT (tituj RSS; artikujt nuk jane verifikuar plotesisht):\n{links}\n\n"
         "⚠️ Kuotat dhe formacionet nuk kontrollohen automatikisht ne kete version."
     ))
     print("[REQUEST] AI_REPLY_SENT")
