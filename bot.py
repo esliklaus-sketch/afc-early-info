@@ -773,7 +773,7 @@ def process_story(
     if ai_enabled and score >= ai_min_score and os.getenv("OPENAI_API_KEY"):
         global AI_CALLS_THIS_RUN
         ai_limit = max(0, int(os.getenv("AI_MAX_CALLS_PER_RUN", "1")))
-        if AI_CALLS_THIS_RUN < ai_limit:
+        if AI_CALLS_THIS_RUN < max(0, ai_limit - 1):
             AI_CALLS_THIS_RUN += 1
             evidence = (
                 f"Burimi: {source_name}\nTitulli: {title}\n"
@@ -953,10 +953,10 @@ def requested_match(message):
         return None
     if text.lower().startswith("/start") or text.lower().startswith("/help"):
         return "__HELP__"
-    match = re.match(r"^/(?:analizo|shiko)(?:@\w+)?\s+(.+)$", text, re.I | re.S)
+    match = re.match(r"^/(?:analizo|analyzo|analizoje|shiko)(?:@\w+)?\s+(.+)$", text, re.I | re.S)
     if match:
         return match.group(1).strip()[:120]
-    match = re.match(r"^(?:shiko|analizo|kerko|kërko|me shif|më shif|kontrollo)\s+(.+)$", text, re.I | re.S)
+    match = re.match(r"^(?:me\s+analizo|më\s+analizo|me\s+analizoje|analizo|analyzo|analizoje|shiko|kerko|kërko|me\s+shif|më\s+shif|kontrollo)\s+(.+)$", text, re.I | re.S)
     if match:
         return match.group(1).strip()[:120]
     return None
@@ -1088,8 +1088,9 @@ def check_telegram_requests():
     try:
         updates = telegram_api("getUpdates", {"timeout": 0, "limit": 30, "allowed_updates": ["message"]})
     except Exception as exc:
-        print("[REQUEST] Telegram polling error:", type(exc).__name__)
+        print("[REQUEST] Telegram polling error:", type(exc).__name__, str(exc)[:250])
         return
+    print(f"[REQUEST] TELEGRAM_UPDATES count={len(updates)}")
     for update in updates:
         update_id = update.get("update_id")
         if update_id is None:
@@ -1097,6 +1098,7 @@ def check_telegram_requests():
         message = update.get("message") or {}
         chat_id = str((message.get("chat") or {}).get("id", ""))
         command = requested_match(message.get("text", ""))
+        print(f"[REQUEST] incoming update={update_id} authorized={chat_id == str(TELEGRAM_CHAT_ID)} recognized={bool(command)}")
         if chat_id == str(TELEGRAM_CHAT_ID) and command:
             try:
                 if command == "__HELP__":
@@ -1105,7 +1107,7 @@ def check_telegram_requests():
                 else:
                     processed = investigate_match(command, chat_id)
             except Exception as exc:
-                print("[REQUEST] processing error:", type(exc).__name__)
+                print("[REQUEST] processing error:", type(exc).__name__, str(exc)[:250])
                 break  # keep this update pending for the next run
             if not processed:
                 break  # cap reached; leave the message pending
@@ -1152,6 +1154,7 @@ def main():
     except Exception as exc:
 
         print("Main loop error:", exc)
+        raise
 
 
 
