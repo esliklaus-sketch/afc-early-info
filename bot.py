@@ -7,6 +7,7 @@ import feedparser
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 from afc_social_press import check_afc_social_press
+from intelligence_engine import analyze_match
 
 # ============================================================
 # AFC EARLY INFO
