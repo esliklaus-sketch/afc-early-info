@@ -731,6 +731,8 @@ def build_alert(
 # PROCESS STORY
 # =========================
 
+AI_CALLS_THIS_RUN = 0
+
 def process_story(
     source_name,
     source_trust,
@@ -762,7 +764,29 @@ def process_story(
 
     if score < MIN_ALERT_SCORE:
         return
-    AI_ENABLED = False
+
+    # AI remains disabled unless explicitly enabled in the workflow.
+    # Per-run cap is NOT a monthly spending limit.
+    ai_enabled = os.getenv("AI_ENABLED", "false").lower() == "true"
+    ai_min_score = int(os.getenv("AI_MIN_SCORE", "9"))
+    if ai_enabled and score >= ai_min_score and os.getenv("OPENAI_API_KEY"):
+        global AI_CALLS_THIS_RUN
+        ai_limit = max(0, int(os.getenv("AI_MAX_CALLS_PER_RUN", "1")))
+        if AI_CALLS_THIS_RUN < ai_limit:
+            AI_CALLS_THIS_RUN += 1
+            evidence = (
+                f"Burimi: {source_name}\nTitulli: {title}\n"
+                f"Pershkrimi: {description}\nLinku: {link}\n"
+                "Vetem keto te dhena jane verifikuar si te disponueshme. "
+                "Mos supozo se linku eshte lexuar."
+            )
+            ai_result = analyze_match(
+                "Vlereso rendesine e ketij lajmi per ndeshjet e ardhshme. "
+                "Dallo faktet, pasigurite dhe verifikimet e nevojshme.",
+                evidence=evidence,
+            )
+            if ai_result and not ai_result.startswith(("Gabim:", "Analiza AI deshtoi")):
+                description = (description[:350] + "\n\nAI (bazuar vetem ne kete lajm):\n" + ai_result[:1200])
 
     alert = build_alert(
         source_name,
