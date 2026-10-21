@@ -2,14 +2,11 @@ import os
 import re
 import time
 import hashlib
-import unicodedata
-from difflib import SequenceMatcher
-from datetime import timedelta
-from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from urllib.parse import quote_plus
 from afc_social_press import check_afc_social_press
 from intelligence_engine import analyze_match
 
@@ -50,10 +47,6 @@ MIN_ALERT_SCORE = int(os.getenv("MIN_ALERT_SCORE", "5"))
 
 # Avoid sending the same story repeatedly.
 SEEN_FILE = "seen_news.txt"
-# Deduplicate near-identical headlines across sources for 7 days.
-EVENT_PREFIX = "event:"
-DEDUP_DAYS = 7
-
 
 
 # =========================
@@ -566,60 +559,6 @@ def story_id(title, link):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def clean_link(link):
-    """Remove tracking query strings and fragments without changing article identity."""
-    if not link:
-        return ""
-    parsed = urlparse(link.strip())
-    tracking = {"fbclid", "gclid", "mc_cid", "mc_eid"}
-    query = urlencode([
-        (key, value) for key, value in parse_qsl(parsed.query)
-        if not key.lower().startswith("utm_") and key.lower() not in tracking
-    ])
-    return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(),
-                       parsed.path.rstrip("/") or "/", parsed.params, query, ""))
-
-
-def headline_key(title):
-    """Stable title comparison across publishers, without AI or extra API calls."""
-    title = BeautifulSoup(title or "", "html.parser").get_text(" ", strip=True)
-    title = unicodedata.normalize("NFKD", title.lower())
-    title = "".join(ch for ch in title if not unicodedata.combining(ch))
-    title = re.sub(r"\b(?:goal\.com|livescore|breaking news)\b", " ", title)
-    title = re.sub(r"[^a-z0-9]+", " ", title)
-    return " ".join(title.split())
-
-
-def duplicate_event(title, seen, now=None):
-    """Match near-identical high-information headlines from the past week."""
-    key = headline_key(title)
-    words = set(key.split())
-    if len(words) < 6 or len(key) < 35:
-        return False
-    now = now or datetime.now(timezone.utc)
-    for entry in seen:
-        if not entry.startswith(EVENT_PREFIX):
-            continue
-        try:
-            _, date_str, prior = entry.split(":", 2)
-            age = (now.date() - datetime.strptime(date_str, "%Y-%m-%d").date()).days
-        except (ValueError, IndexError):
-            continue
-        if not 0 <= age <= DEDUP_DAYS:
-            continue
-        previous_words = set(prior.split())
-        if not previous_words:
-            continue
-        overlap = len(words & previous_words) / max(len(words), len(previous_words))
-        if overlap >= 0.80 and SequenceMatcher(None, key, prior).ratio() >= 0.84:
-            return True
-    return False
-
-
-def event_id(title):
-    return f"{EVENT_PREFIX}{datetime.now(timezone.utc).date().isoformat()}:{headline_key(title)}"
-
-
 def load_seen():
 
     if not os.path.exists(SEEN_FILE):
@@ -804,7 +743,7 @@ def process_story(
     seen,
 ):
 
-    news_id = story_id(title, clean_link(link))
+    news_id = story_id(title, link)
 
     if news_id in seen:
         return
@@ -825,13 +764,6 @@ def process_story(
     )
 
     if score < MIN_ALERT_SCORE:
-        return
-
-    # Filter repeated stories BEFORE any paid AI call or Telegram alert.
-    if duplicate_event(title, seen):
-        print(f"[DUPLICATE] Same event already reported: {title}")
-        seen.add(news_id)
-        save_seen(news_id)
         return
 
     # AI remains disabled unless explicitly enabled in the workflow.
@@ -870,11 +802,8 @@ def process_story(
     if send_telegram(alert):
 
         seen.add(news_id)
+
         save_seen(news_id)
-        fingerprint = event_id(title)
-        if fingerprint not in seen:
-            seen.add(fingerprint)
-            save_seen(fingerprint)
 
         print("ALERT SENT")
 
@@ -944,9 +873,9 @@ def check_web_source(source, seen):
 
         link = item["href"]
 
-        link = urljoin(source["url"], link)
-        if urlparse(link).scheme not in ("http", "https"):
-            continue
+        if link.startswith("/"):
+            from urllib.parse import urljoin
+            link = urljoin(source["url"], link)
 
         process_story(
             source["name"],
@@ -990,6 +919,170 @@ def check_sources(seen):
             )
 
 
+
+# ============================================================
+# TELEGRAM: KERKIM ME KERKESE (pa prag score)
+# P.sh.: /analizo Paro vs Asai, ose "Shiko Paro - Asai"
+# Mesazhet lexohen kur ekzekutohet GitHub Actions; jo ne kohe reale.
+# ============================================================
+
+def telegram_api(method, payload=None):
+    response = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}",
+        json=payload or {}, timeout=20,
+    )
+    response.raise_for_status()
+    result = response.json()
+    if not result.get("ok"):
+        raise RuntimeError(f"Telegram {method} returned an error")
+    return result.get("result")
+
+
+def reply_to_chat(chat_id, text):
+    # Telegram accepts at most 4096 characters per message.
+    for start in range(0, len(text), 3500):
+        telegram_api("sendMessage", {
+            "chat_id": chat_id, "text": text[start:start + 3500],
+            "disable_web_page_preview": True,
+        })
+
+
+def requested_match(message):
+    text = (message or "").strip()
+    if not text:
+        return None
+    if text.lower().startswith("/start") or text.lower().startswith("/help"):
+        return "__HELP__"
+    match = re.match(r"^/(?:analizo|shiko)(?:@\w+)?\s+(.+)$", text, re.I | re.S)
+    if match:
+        return match.group(1).strip()[:120]
+    match = re.match(r"^(?:shiko|analizo|kerko|kërko|me shif|më shif|kontrollo)\s+(.+)$", text, re.I | re.S)
+    if match:
+        return match.group(1).strip()[:120]
+    return None
+
+
+def research_news(match_name):
+    # Google News RSS: tituj dhe permbledhje, JO leximi i artikullit te plote.
+    # Nuk pretendojme se jane verifikuar formacionet ose kuotat.
+    teams = [x.strip() for x in re.split(r"\s+(?:vs?\.?|versus)\s+|\s*[-–—]\s*", match_name, maxsplit=1, flags=re.I) if x.strip()]
+    search_terms = [f'"{match_name}" football']
+    if len(teams) == 2:
+        search_terms.extend([f'"{teams[0]}" "{teams[1]}" football',
+                             f'"{teams[0]}" football injury squad',
+                             f'"{teams[1]}" football injury squad'])
+    else:
+        search_terms.append(f'{match_name} football injury squad coach travel')
+    evidence = []
+    seen_links = set()
+    failures = 0
+    for term in search_terms:
+        url = f"https://news.google.com/rss/search?q={quote_plus(term + ' when:7d')}&hl=en&gl=US&ceid=US:en"
+        try:
+            response = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+            for item in feed.entries[:10]:
+                title = BeautifulSoup(item.get("title", ""), "html.parser").get_text(" ", strip=True)
+                summary = BeautifulSoup(item.get("summary", ""), "html.parser").get_text(" ", strip=True)
+                link = item.get("link", "")
+                if not title or not link or link in seen_links:
+                    continue
+                seen_links.add(link)
+                evidence.append({
+                    "title": title[:250], "summary": summary[:350],
+                    "date": item.get("published", "pa date")[:60], "url": link,
+                })
+                if len(evidence) >= 12:
+                    break
+        except Exception as exc:
+            failures += 1
+            print("[REQUEST] news search failed:", type(exc).__name__)
+        if len(evidence) >= 12:
+            break
+    return evidence, failures
+
+
+def investigate_match(match_name, chat_id):
+    global AI_CALLS_THIS_RUN
+    if os.getenv("AI_ENABLED", "false").lower() != "true" or not os.getenv("OPENAI_API_KEY"):
+        reply_to_chat(chat_id, "AI nuk eshte aktiv ose mungon OPENAI_API_KEY ne workflow.")
+        return True
+    cap = max(0, int(os.getenv("AI_MAX_CALLS_PER_RUN", "1")))
+    if AI_CALLS_THIS_RUN >= cap:
+        reply_to_chat(chat_id, "Limiti i analizave per kete ekzekutim u arrit. Provo ne ekzekutimin tjeter.")
+        return False
+    articles, failures = research_news(match_name)
+    if not articles:
+        reply_to_chat(chat_id, (
+            f"🔎 {match_name}\nNuk gjeta lajme te perdorshme ne kerkimin 7-ditor. "
+            "Nuk mund te konfirmoj mungesa, udhetime ose levizje kuotash. "
+            + ("Disa kerkime deshtuan teknikisht." if failures else "")
+        ))
+        return True
+    evidence = "\n\n".join(
+        f"{i}. {a['title']} | {a['date']}\n{a['summary']}\n{a['url']}"
+        for i, a in enumerate(articles, 1)
+    )
+    AI_CALLS_THIS_RUN += 1
+    print(f"[REQUEST] AI_CALL match={match_name[:70]} articles={len(articles)}")
+    analysis = analyze_match(
+        "Analizo ndeshjen '" + match_name + "' perpara ndeshjes. "
+        "Jep lajmet me rendesi, mungesat e reja kundrejt te vjetrave, udhetimin, "
+        "deklaratat, motivimin dhe arsyet e mundshme te levizjes se kuotave. "
+        "Per cdo pohim trego burimin dhe daten. Mos shpik formacione, mungesa, "
+        "statistika ose kuota. Kemi vetem tituj dhe permbledhje nga RSS, "
+        "jo verifikim te artikujve. Thuaj shprehimisht cfare nuk dihet. "
+        "Pergjigju ne shqip, shkurt dhe me renditje prioriteti.",
+        evidence=evidence[:11500],
+    )
+    if not analysis or analysis.startswith(("Gabim:", "Analiza AI deshtoi")):
+        reply_to_chat(chat_id, "Analiza AI deshtoi. Kontrollo log-un [REQUEST].")
+        return True
+    links = "\n".join(f"{i}. {a['url']}" for i, a in enumerate(articles[:6], 1))
+    reply_to_chat(chat_id, (
+        f"🔎 AFC INTELLIGENCE | {match_name}\n\n{analysis}\n\n"
+        f"BURIMET E KERKIMIT (RSS, jo te verifikuara plotesisht):\n{links}\n\n"
+        "⚠️ Kuotat dhe formacionet nuk kontrollohen automatikisht ne kete version."
+    ))
+    print("[REQUEST] AI_REPLY_SENT")
+    return True
+
+
+def check_telegram_requests():
+    # getUpdates offset i konfirmuar nga Telegram ruan gjendjen mes GitHub runs.
+    # Nuk kerkon skedar offset ne GitHub. Duhet te mos kete webhook aktiv.
+    try:
+        updates = telegram_api("getUpdates", {"timeout": 0, "limit": 30, "allowed_updates": ["message"]})
+    except Exception as exc:
+        print("[REQUEST] Telegram polling error:", type(exc).__name__)
+        return
+    for update in updates:
+        update_id = update.get("update_id")
+        if update_id is None:
+            continue
+        message = update.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        command = requested_match(message.get("text", ""))
+        if chat_id == str(TELEGRAM_CHAT_ID) and command:
+            try:
+                if command == "__HELP__":
+                    reply_to_chat(chat_id, "Shkruaj: /analizo Paro vs Asai\nOse: Shiko Paro - Asai")
+                    processed = True
+                else:
+                    processed = investigate_match(command, chat_id)
+            except Exception as exc:
+                print("[REQUEST] processing error:", type(exc).__name__)
+                break  # keep this update pending for the next run
+            if not processed:
+                break  # cap reached; leave the message pending
+        # Confirm only the current processed/ignored update, not future messages.
+        try:
+            telegram_api("getUpdates", {"offset": update_id + 1, "limit": 1, "timeout": 0})
+        except Exception as exc:
+            print("[REQUEST] Telegram ack error:", type(exc).__name__)
+            break
+
 # =========================
 # STARTUP TEST
 # =========================
@@ -1020,6 +1113,7 @@ def main():
 
     try:
 
+        check_telegram_requests()
         check_sources(seen)
         check_afc_social_press(send_telegram)
     except Exception as exc:
