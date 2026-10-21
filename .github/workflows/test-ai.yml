@@ -1,0 +1,50 @@
+
+name: AFC Intelligence AI Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-ai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Get code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test AI intelligence
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python - <<'PY'
+          from intelligence_engine import analyze_match
+
+          question = (
+              "Nje ekip ka humbur 2-0 ne ndeshjen e pare, "
+              "por ka luajtur 85 minuta me 10 lojtare. "
+              "Ne kthim luan ne shtepi dhe ka trajner te ri. "
+              "Cilat jane faktoret kryesore qe duhen analizuar?"
+          )
+
+          result = analyze_match(question)
+
+          print("=== AFC INTELLIGENCE TEST ===")
+          print(result)
+
+          if result.startswith("Gabim:") or result.startswith(
+              "Analiza AI deshtoi"
+          ):
+              raise SystemExit("AI test failed")
+          PY
