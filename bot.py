@@ -2,6 +2,10 @@ import os
 import re
 import time
 import hashlib
+import unicodedata
+from difflib import SequenceMatcher
+from datetime import timedelta
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
 import requests
 import feedparser
 from bs4 import BeautifulSoup
@@ -46,6 +50,10 @@ MIN_ALERT_SCORE = int(os.getenv("MIN_ALERT_SCORE", "5"))
 
 # Avoid sending the same story repeatedly.
 SEEN_FILE = "seen_news.txt"
+# Deduplicate near-identical headlines across sources for 7 days.
+EVENT_PREFIX = "event:"
+DEDUP_DAYS = 7
+
 
 
 # =========================
@@ -558,6 +566,60 @@ def story_id(title, link):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def clean_link(link):
+    """Remove tracking query strings and fragments without changing article identity."""
+    if not link:
+        return ""
+    parsed = urlparse(link.strip())
+    tracking = {"fbclid", "gclid", "mc_cid", "mc_eid"}
+    query = urlencode([
+        (key, value) for key, value in parse_qsl(parsed.query)
+        if not key.lower().startswith("utm_") and key.lower() not in tracking
+    ])
+    return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(),
+                       parsed.path.rstrip("/") or "/", parsed.params, query, ""))
+
+
+def headline_key(title):
+    """Stable title comparison across publishers, without AI or extra API calls."""
+    title = BeautifulSoup(title or "", "html.parser").get_text(" ", strip=True)
+    title = unicodedata.normalize("NFKD", title.lower())
+    title = "".join(ch for ch in title if not unicodedata.combining(ch))
+    title = re.sub(r"\b(?:goal\.com|livescore|breaking news)\b", " ", title)
+    title = re.sub(r"[^a-z0-9]+", " ", title)
+    return " ".join(title.split())
+
+
+def duplicate_event(title, seen, now=None):
+    """Match near-identical high-information headlines from the past week."""
+    key = headline_key(title)
+    words = set(key.split())
+    if len(words) < 6 or len(key) < 35:
+        return False
+    now = now or datetime.now(timezone.utc)
+    for entry in seen:
+        if not entry.startswith(EVENT_PREFIX):
+            continue
+        try:
+            _, date_str, prior = entry.split(":", 2)
+            age = (now.date() - datetime.strptime(date_str, "%Y-%m-%d").date()).days
+        except (ValueError, IndexError):
+            continue
+        if not 0 <= age <= DEDUP_DAYS:
+            continue
+        previous_words = set(prior.split())
+        if not previous_words:
+            continue
+        overlap = len(words & previous_words) / max(len(words), len(previous_words))
+        if overlap >= 0.80 and SequenceMatcher(None, key, prior).ratio() >= 0.84:
+            return True
+    return False
+
+
+def event_id(title):
+    return f"{EVENT_PREFIX}{datetime.now(timezone.utc).date().isoformat()}:{headline_key(title)}"
+
+
 def load_seen():
 
     if not os.path.exists(SEEN_FILE):
@@ -742,7 +804,7 @@ def process_story(
     seen,
 ):
 
-    news_id = story_id(title, link)
+    news_id = story_id(title, clean_link(link))
 
     if news_id in seen:
         return
@@ -763,6 +825,13 @@ def process_story(
     )
 
     if score < MIN_ALERT_SCORE:
+        return
+
+    # Filter repeated stories BEFORE any paid AI call or Telegram alert.
+    if duplicate_event(title, seen):
+        print(f"[DUPLICATE] Same event already reported: {title}")
+        seen.add(news_id)
+        save_seen(news_id)
         return
 
     # AI remains disabled unless explicitly enabled in the workflow.
@@ -801,8 +870,11 @@ def process_story(
     if send_telegram(alert):
 
         seen.add(news_id)
-
         save_seen(news_id)
+        fingerprint = event_id(title)
+        if fingerprint not in seen:
+            seen.add(fingerprint)
+            save_seen(fingerprint)
 
         print("ALERT SENT")
 
@@ -872,9 +944,9 @@ def check_web_source(source, seen):
 
         link = item["href"]
 
-        if link.startswith("/"):
-            from urllib.parse import urljoin
-            link = urljoin(source["url"], link)
+        link = urljoin(source["url"], link)
+        if urlparse(link).scheme not in ("http", "https"):
+            continue
 
         process_story(
             source["name"],
