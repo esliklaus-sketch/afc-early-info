@@ -13,10 +13,10 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Get code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -24,27 +24,64 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Test AI intelligence
+      - name: Check configuration
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python - <<'PY'
-          from intelligence_engine import analyze_match
+          import os
+          import importlib.util
+          import openai
 
-          question = (
-              "Nje ekip ka humbur 2-0 ne ndeshjen e pare, "
-              "por ka luajtur 85 minuta me 10 lojtare. "
-              "Ne kthim luan ne shtepi dhe ka trajner te ri. "
-              "Cilat jane faktoret kryesore qe duhen analizuar?"
+          assert os.getenv("OPENAI_API_KEY"), (
+              "OPENAI_API_KEY is missing"
           )
 
-          result = analyze_match(question)
+          assert importlib.util.find_spec(
+              "intelligence_engine"
+          ), "intelligence_engine.py is missing"
 
-          print("=== AFC INTELLIGENCE TEST ===")
+          print("API key: configured")
+          print("OpenAI SDK: installed")
+          print("Intelligence engine: found")
+          PY
+
+      - name: Test AI intelligence
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4.1-mini
+        run: |
+          python - <<'PY'
+          from intelligence_engine import analyze_match
+
+          evidence = """
+          SKENAR HIPOTETIK:
+          Ekipi A humbi 2-0.
+          Luajti 85 minuta me 10 lojtare.
+          Ndeshjen e kthimit e luan ne shtepi.
+          Ka trajner te ri.
+          Nuk kemi informacione te verifikuara
+          per mungesat dhe kuotat.
+          """
+
+          result = analyze_match(
+              "Analizo situaten, ndaj faktet nga "
+              "hipotezat dhe identifiko cfare "
+              "duhet verifikuar para ndeshjes.",
+              evidence=evidence
+          )
+
+          print("=== AFC INTELLIGENCE 2.0 ===")
           print(result)
 
-          if result.startswith("Gabim:") or result.startswith(
-              "Analiza AI deshtoi"
+          if (
+              not result
+              or result.startswith("Gabim:")
+              or result.startswith("Analiza AI deshtoi")
           ):
-              raise SystemExit("AI test failed")
+              raise SystemExit(
+                  "AI test failed. Check logs."
+              )
+
+          print("AI TEST PASSED")
           PY
