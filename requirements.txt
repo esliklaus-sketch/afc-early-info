@@ -3,3 +3,4 @@ feedparser
 beautifulsoup4
 googlenewsdecoder
 selectolax<1.0
+openai>=1.0,<3.0
