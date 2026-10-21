@@ -762,6 +762,7 @@ def process_story(
 
     if score < MIN_ALERT_SCORE:
         return
+    AI_ENABLED = False
 
     alert = build_alert(
         source_name,
