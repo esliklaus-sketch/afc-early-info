@@ -959,6 +959,8 @@ def requested_match(message):
     match = re.match(r"^(?:me\s+analizo|më\s+analizo|me\s+analizoje|analizo|analyzo|analizoje|shiko|kerko|kërko|me\s+shif|më\s+shif|kontrollo)\s+(.+)$", text, re.I | re.S)
     if match:
         return match.group(1).strip()[:120]
+    if not text.startswith("/") and 2 <= len(text) <= 80 and len(text.split()) <= 7:
+        return text
     return None
 
 
