@@ -47,7 +47,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AI_ENABLED: ${{ vars.AI_ENABLED }}
           AI_MIN_SCORE: "9"
-          AI_MAX_CALLS_PER_RUN: "1"
+          AI_MAX_CALLS_PER_RUN: "10"
         run: python bot.py
 
       - name: Save sent news
