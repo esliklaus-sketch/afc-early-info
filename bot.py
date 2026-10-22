@@ -1148,7 +1148,6 @@ def main():
 
     try:
 
-        check_telegram_requests()
         check_sources(seen)
         check_afc_social_press(send_telegram)
     except Exception as exc:
