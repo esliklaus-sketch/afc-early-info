@@ -965,76 +965,116 @@ def requested_match(message):
 
 
 def research_news(match_name):
-    """Find recent, relevant evidence; do not present RSS as verified reporting."""
+    """Search regional football news in local languages; RSS is not verified reporting."""
     from datetime import datetime, timezone
     from email.utils import parsedate_to_datetime
-    from urllib.parse import urlparse
-    teams = [x.strip() for x in re.split(r"\s+(?:vs?\.?|versus)\s+|\s*[-–—]\s*", match_name, maxsplit=1, flags=re.I) if x.strip()]
-    # Search in original spelling plus common local variants.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    teams = [x.strip() for x in re.split(r"\\s+(?:vs?\\.?|versus)\\s+|\\s*[-–—]\\s*", match_name, maxsplit=1, flags=re.I) if x.strip()]
+    subjects = teams if len(teams) == 2 else [match_name]
+
+    # Local-script aliases and region/language pairs. Expand as leagues are added.
     aliases = {
+        "ittihad aleppo": ["Al Ittihad Aleppo", "Al-Ittihad SC Aleppo", "الاتحاد الحلبي", "نادي الاتحاد الحلبي", "أهلي حلب"],
+        "al ittihad aleppo": ["الاتحاد الحلبي", "أهلي حلب"],
+        "goa fc": ["FC Goa", "एफसी गोवा", "एफ सी गोवा", "एफसी गोवा फुटबॉल"],
+        "fc goa": ["एफसी गोवा", "एफ सी गोवा"],
+        "paro": ["Paro FC", "بارو"],
+        "paro fc": ["Paro FC", "بارو"],
         "al qadsia": ["Al Qadsiah", "Al Qadisiya", "القادسية"],
         "al qadisa": ["Al Qadsiah", "Al Qadisiya", "القادسية"],
         "al qadsiah": ["Al Qadisiya", "القادسية"],
-        "paro": ["Paro FC", "بارو"],
     }
-    subjects = teams if len(teams) == 2 else [match_name]
-    terms = []
+    regional = {
+        "ittihad aleppo": [("ar", "SA"), ("ar", "EG"), ("en", "US")],
+        "al ittihad aleppo": [("ar", "SA"), ("en", "US")],
+        "goa fc": [("en", "IN"), ("hi", "IN"), ("en", "US")],
+        "fc goa": [("en", "IN"), ("hi", "IN")],
+        "paro": [("en", "IN"), ("en", "US")],
+        "paro fc": [("en", "IN"), ("en", "US")],
+    }
+    # Cover all major regional search languages without forcing every language
+    # onto every team; unrelated translations cause false positives.
+    default_regions = [
+        ("en", "US"), ("ar", "SA"), ("hi", "IN"), ("bn", "BD"),
+        ("id", "ID"), ("ms", "MY"), ("th", "TH"), ("vi", "VN"),
+        ("zh-CN", "CN"), ("ja", "JP"), ("ko", "KR"), ("fa", "IR"),
+        ("fr", "FR"), ("pt", "BR"), ("ru", "RU"), ("tr", "TR"),
+    ]
+    plans = []
+    if len(subjects) == 2:
+        plans.append((f'"{subjects[0]}" "{subjects[1]}" football', "en", "US"))
     for team in subjects:
-        terms.append(f'"{team}" football')
-        terms.append(f'"{team}" injury OR squad OR coach OR travel')
-        for alias in aliases.get(team.lower(), [])[:3]:
-            terms.append(f'"{alias}" football')
-    if len(teams) == 2:
-        terms.insert(0, f'"{teams[0]}" "{teams[1]}" football')
-    # Limit queries and articles to avoid long GitHub runs.
-    terms = list(dict.fromkeys(terms))[:8]
-    articles, seen_titles, failures = [], set(), 0
+        key = team.casefold().strip()
+        variants = list(dict.fromkeys([team] + aliases.get(key, [])))
+        regions = regional.get(key, default_regions)
+        for i, variant in enumerate(variants[:5]):
+            lang, country = regions[min(i, len(regions) - 1)]
+            plans.append((f'"{variant}"', lang, country))
+            if i == 0:
+                for lang2, country2 in regions[:5]:
+                    plans.append((f'"{variant}" football', lang2, country2))
+        for lang, country in regions[:2]:
+            plans.append((f'"{team}" coach OR injury OR squad OR travel', lang, country))
+    plans = list(dict.fromkeys(plans))[:24]
+
     def clean(value):
         return BeautifulSoup(value or "", "html.parser").get_text(" ", strip=True)
+
+    variants = [normalize(v) for t in subjects for v in ([t] + aliases.get(t.casefold().strip(), []))]
+    variants = [v for v in variants if len(v) >= 4]
     def relevant(title, summary):
         haystack = normalize(title + " " + summary)
-        tokens = [normalize(t) for t in subjects]
-        variants = [normalize(v) for t in subjects for v in ([t] + aliases.get(t.lower(), []))]
-        # Require a team name in the headline/summary; otherwise Google may
-        # return unrelated news for generic terms such as "football".
-        return any(v and v in haystack for v in variants)
-    for term in terms:
-        url = f"https://news.google.com/rss/search?q={quote_plus(term + ' when:7d')}&hl=en-US&gl=US&ceid=US:en"
-        try:
-            response = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
-            response.raise_for_status()
-            feed = feedparser.parse(response.content)
-            for item in feed.entries[:12]:
-                title, summary = clean(item.get("title")), clean(item.get("summary"))
-                link = item.get("link", "")
-                if not title or not link or not relevant(title, summary):
-                    continue
-                pub = item.get("published", "")
-                try:
-                    published_at = parsedate_to_datetime(pub).astimezone(timezone.utc)
-                    if (datetime.now(timezone.utc) - published_at).days > 7:
+        return any(v in haystack for v in variants)
+
+    def fetch(plan):
+        term, lang, country = plan
+        url = (f"https://news.google.com/rss/search?q={quote_plus(term + ' when:7d')}"
+               f"&hl={lang}-{country}&gl={country}&ceid={country}:{lang}")
+        response = requests.get(url, timeout=9, headers={"User-Agent": "Mozilla/5.0"})
+        response.raise_for_status()
+        return feedparser.parse(response.content).entries[:15]
+
+    articles, seen_titles, failures = [], set(), 0
+    # Parallel RSS requests keep multilingual coverage from blocking Telegram.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(fetch, plan) for plan in plans]
+        for future in as_completed(futures):
+            try:
+                entries = future.result()
+                for item in entries:
+                    title, summary = clean(item.get("title")), clean(item.get("summary"))
+                    link = item.get("link", "")
+                    if not title or not link or not relevant(title, summary):
                         continue
-                except (ValueError, TypeError, OverflowError):
-                    pass
-                # Remove publisher suffix and deduplicate syndicated headlines.
-                headline = re.sub(r"\s+-\s+[^-]{2,55}$", "", title).strip()
-                key = re.sub(r"[^\w]+", " ", normalize(headline))[:110]
-                if key in seen_titles:
-                    continue
-                seen_titles.add(key)
-                source = clean(item.get("source", {}).get("title", "")) if isinstance(item.get("source"), dict) else ""
-                articles.append({"title": title[:250], "summary": summary[:450],
-                                 "date": pub[:65] or "date e papërcaktuar",
-                                 "source": source or "Google News RSS", "url": link})
-                if len(articles) >= 10:
-                    break
-        except Exception as exc:
-            failures += 1
-            print("[REQUEST] news search failed:", type(exc).__name__)
-        if len(articles) >= 10:
-            break
-    print(f"[REQUEST] SEARCH queries={len(terms)} relevant={len(articles)} failures={failures}")
-    return articles, failures
+                    pub = item.get("published", "")
+                    try:
+                        published_at = parsedate_to_datetime(pub).astimezone(timezone.utc)
+                        if (datetime.now(timezone.utc) - published_at).days > 7:
+                            continue
+                    except (ValueError, TypeError, OverflowError):
+                        pass
+                    headline = re.sub(r"\\s+-\\s+[^-]{2,55}$", "", title).strip()
+                    key = re.sub(r"[^\\w]+", " ", normalize(headline))[:110]
+                    if key in seen_titles:
+                        continue
+                    seen_titles.add(key)
+                    source = clean(item.get("source", {}).get("title", "")) if isinstance(item.get("source"), dict) else ""
+                    articles.append({"title": title[:250], "summary": summary[:450],
+                                     "date": pub[:65] or "date e papërcaktuar",
+                                     "source": source or "Google News RSS", "url": link})
+            except Exception as exc:
+                failures += 1
+                print("[REQUEST] regional search failed:", type(exc).__name__)
+    # Prefer recent, relevant reporting over arbitrary search completion order.
+    def article_date(a):
+        try:
+            return parsedate_to_datetime(a["date"]).timestamp()
+        except (ValueError, TypeError, OverflowError):
+            return 0
+    articles.sort(key=article_date, reverse=True)
+    print(f"[REQUEST] MULTILINGUAL queries={len(plans)} relevant={len(articles)} failures={failures}")
+    return articles[:10], failures
 
 
 def investigate_match(match_name, chat_id):
