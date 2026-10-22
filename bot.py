@@ -773,7 +773,7 @@ def process_story(
     if ai_enabled and score >= ai_min_score and os.getenv("OPENAI_API_KEY"):
         global AI_CALLS_THIS_RUN
         ai_limit = max(0, int(os.getenv("AI_MAX_CALLS_PER_RUN", "1")))
-        if AI_CALLS_THIS_RUN < max(0, ai_limit - 1):
+        if AI_CALLS_THIS_RUN < ai_limit:
             AI_CALLS_THIS_RUN += 1
             evidence = (
                 f"Burimi: {source_name}\nTitulli: {title}\n"
