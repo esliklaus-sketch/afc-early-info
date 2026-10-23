@@ -278,7 +278,7 @@ def main():
             print("WARNING: Previous season unavailable.")
 
         older_stats = None
-        if league_id == 80:
+        if league_id in (80, 207, 208):
             older_stats = collect_season(
                 league_id,
                 {"year": 2024, "start": None, "end": None},
