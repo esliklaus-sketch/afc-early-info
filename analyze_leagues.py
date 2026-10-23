@@ -13,6 +13,7 @@ LEAGUES = {
     296: "Thailand Thai League 1",
     340: "Vietnam V.League 1",
     233: "Egypt Premier League",
+    80: "Germany 3. Liga",
 }
 
 LINES = (2.5, 3.5, 4.5, 5.5, 6.5, 7.5)
@@ -274,10 +275,19 @@ def main():
         else:
             print("WARNING: Previous season unavailable.")
 
+        older_stats = None
+        if league_id == 80:
+            older_stats = collect_season(
+                league_id,
+                {"year": 2024, "start": None, "end": None},
+                "Historical 2024",
+            )
+
         output["leagues"][name] = {
             "id": league_id,
             **current_stats,
             "previous_season": previous_stats,
+            "historical_2024": older_stats,
         }
 
         time.sleep(1)
