@@ -14,6 +14,8 @@ LEAGUES = {
     340: "Vietnam",
     233: "Egypt",
     80: "Germany 3. Liga",
+    207: "Switzerland Super League",
+    208: "Switzerland Challenge League",
 }
 
 LINES = {"2.5", "3.5", "4.5", "5.5", "6.5", "7.5"}
