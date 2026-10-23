@@ -13,6 +13,7 @@ LEAGUES = {
     296: "Thailand",
     340: "Vietnam",
     233: "Egypt",
+    80: "Germany 3. Liga",
 }
 
 LINES = {"2.5", "3.5", "4.5", "5.5", "6.5", "7.5"}
