@@ -201,13 +201,23 @@ def main():
             # Asnjë rezultat nga sezoni i sotëm nuk përdoret këtu.
             previous_view = {
                 **previous,
-                "previous_season": None,
+                "previous_season": league.get("historical_2024"),
             }
             rows, result, skipped = test_season(
                 name, league["id"], previous_view, "previous"
             )
             predictions.extend(rows)
             league_reports[name]["previous"] = result
+            skipped_total += skipped
+
+        older = league.get("historical_2024")
+        if older:
+            older_view = {**older, "previous_season": None}
+            rows, result, skipped = test_season(
+                name, league["id"], older_view, "historical_2024"
+            )
+            predictions.extend(rows)
+            league_reports[name]["historical_2024"] = result
             skipped_total += skipped
 
         rows, result, skipped = test_season(
@@ -218,7 +228,7 @@ def main():
         skipped_total += skipped
 
     periods = {}
-    for label in ("previous", "current"):
+    for label in ("historical_2024", "previous", "current"):
         periods[label] = report([
             row for row in predictions
             if row["evaluation_period"] == label
