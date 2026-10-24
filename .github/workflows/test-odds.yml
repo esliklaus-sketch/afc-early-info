@@ -138,6 +138,8 @@ jobs:
           set -euo pipefail
           python value_model.py | tee value_model_report.txt
 
+      - name: Collect German third-league news headlines
+        run: python collect_value_news.py
       - name: Review value candidates with AI
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -278,6 +280,7 @@ jobs:
             data/value_analysis.json
             value_model_report.txt
             data/value_ai_review.json
+            data/value_news.json
           if-no-files-found: warn
           retention-days: 30
 
