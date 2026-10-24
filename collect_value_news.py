@@ -20,7 +20,20 @@ SOURCES = {
     "ndr.de": "NDR Sport",
     "mdr.de": "MDR Sport",
 }
+SWISS_SOURCES = {
+    "sfl.ch": "Swiss Football League", "srf.ch": "SRF Sport",
+    "blick.ch": "Blick", "rsi.ch": "RSI Sport", "rtn.ch": "RTN",
+}
+GERMAN_SOURCES = dict(SOURCES)
+SOURCES.update(SWISS_SOURCES)
 TARGET = Path("data/value_news.json")
+
+def source_config(league_id):
+    if str(league_id) == "80":
+        return GERMAN_SOURCES, [("de", "DE", "DE:de")]
+    if str(league_id) in {"207", "208"}:
+        return SWISS_SOURCES, [("de", "CH", "CH:de"), ("fr", "CH", "CH:fr"), ("it", "CH", "CH:it")]
+    return {}, []
 
 
 def normalize(text):
@@ -33,17 +46,17 @@ def team_matches(title, team):
     return bool(words) and any(w in normalize(title).split() for w in words)
 
 
-def publisher_allowed(url):
+def publisher_allowed(url, sources=None):
     host = (urlparse(url).hostname or "").lower()
-    return any(host == d or host.endswith("." + d) for d in SOURCES)
+    return any(host == d or host.endswith("." + d) for d in (SOURCES if sources is None else sources))
 
 
-def parse_feed(payload, teams, now):
+def parse_feed(payload, teams, now, sources=None):
     found = []
     for item in ET.fromstring(payload).findall("./channel/item"):
         title = item.findtext("title", "").strip()
         source = item.find("source")
-        if source is None or not publisher_allowed(source.get("url", "")):
+        if source is None or not publisher_allowed(source.get("url", ""), sources):
             continue
         try:
             published = parsedate_to_datetime(item.findtext("pubDate", "")).astimezone(timezone.utc)
@@ -72,21 +85,31 @@ def main():
     now = datetime.now(timezone.utc)
     result = {"generated_at": now.isoformat(), "odds_captured_at": data.get("odds_captured_at"),
               "sources": SOURCES, "matches": {}, "note": "Headlines only; no independently confirmed injuries or rotation."}
-    domains = " OR ".join("site:" + d for d in SOURCES)
     for fixture, row in list(matches.items())[:maximum]:
-        if str(row.get("league_id")) != "80":
+        sources, locales = source_config(row.get("league_id"))
+        if not locales:
             continue
         teams = [row["home"], row["away"]]
+        domains = " OR ".join("site:" + d for d in sources)
         query = f'("{teams[0]}" OR "{teams[1]}") ({domains}) when:7d'
-        entry = {"status": "ok", "articles": []}
-        try:
-            response = requests.get("https://news.google.com/rss/search", params={"q": query, "hl": "de", "gl": "DE", "ceid": "DE:de"}, timeout=20)
-            response.raise_for_status()
-            entry["articles"] = parse_feed(response.content, teams, now)
-            if not entry["articles"]:
-                entry["status"] = "no_matching_headlines"
-        except (requests.RequestException, ET.ParseError):
-            entry["status"] = "fetch_failed"
+        entry = {"status": "ok", "articles": [], "language_results": {}}
+        for language, country, edition in locales:
+            try:
+                response = requests.get("https://news.google.com/rss/search",
+                    params={"q": query, "hl": language, "gl": country, "ceid": edition}, timeout=20)
+                response.raise_for_status()
+                rows = parse_feed(response.content, teams, now, sources)
+                entry["articles"].extend(rows)
+                entry["language_results"][language] = "ok"
+            except (requests.RequestException, ET.ParseError):
+                entry["language_results"][language] = "fetch_failed"
+        unique = {normalize(r["title"]): r for r in entry["articles"]}
+        entry["articles"] = sorted(unique.values(), key=lambda r: r["published_at"], reverse=True)[:10]
+        failed = list(entry["language_results"].values()).count("fetch_failed")
+        if failed:
+            entry["status"] = "fetch_failed" if failed == len(locales) else "partial_fetch"
+        elif not entry["articles"]:
+            entry["status"] = "no_matching_headlines"
         result["matches"][fixture] = entry
     TARGET.parent.mkdir(parents=True, exist_ok=True)
     TARGET.write_text(json.dumps(result, ensure_ascii=False, indent=2))
