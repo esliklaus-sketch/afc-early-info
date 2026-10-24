@@ -11,6 +11,8 @@ from value_model import parse_date, read_json
 STATE_PATH = Path("data/prediction_tracking.json")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_VALUE_CHAT_ID")
+MIN_EV = float(os.getenv("AFC_VALUE_MIN_EV", "15"))
+MIN_ODD = float(os.getenv("AFC_VALUE_MIN_ODD", "1.8"))
 
 
 def save_state(state):
@@ -81,6 +83,13 @@ def main():
 
     state = read_json(STATE_PATH)
     value = read_json("data/value_analysis.json")
+    reviews = {}
+    review_path = Path("data/value_ai_review.json")
+    if review_path.exists():
+        review_data = read_json(review_path)
+        if (review_data.get("odds_captured_at") == value.get("odds_captured_at")
+                and review_data.get("model_version") == value.get("model_version")):
+            reviews = {str(r["fixture_id"]): r for r in review_data.get("candidates", [])}
     now = datetime.now(timezone.utc)
     captured = parse_date(value["odds_captured_at"])
 
@@ -95,7 +104,7 @@ def main():
         for row in value.get("results", []):
             if parse_date(row["match_date"]) <= now:
                 continue
-            if row["model_ev_pct"] <= 0:
+            if float(row["model_ev_pct"]) < MIN_EV or float(row["odd"]) < MIN_ODD:
                 continue
 
             fixture_key = (
@@ -144,6 +153,17 @@ def main():
                 f"Fair: {pick['fair_odd']:.2f} | "
                 f"EV modeli: {pick['model_ev_pct']:+.1f}%"
             )
+
+        review = reviews.get(str(first["fixture_id"]))
+        if review and review.get("ai_review"):
+            lines.extend([
+                "",
+                f"🤖 AI — {review['selection']} {review['line']}:",
+                str(review["ai_review"])[:1200],
+                "AI shqyrton statistikat; lajmet dhe mungesat nuk janë verifikuar.",
+            ])
+        else:
+            lines.extend(["", "AI: pa analizë për këtë ndeshje."])
 
         lines.extend([
             "",

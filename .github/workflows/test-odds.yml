@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests 'openai>=1.68,<3'
 
       - name: Restore prediction history
         uses: actions/github-script@v7
@@ -137,6 +137,11 @@ jobs:
         run: |
           set -euo pipefail
           python value_model.py | tee value_model_report.txt
+
+      - name: Review value candidates with AI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python value_ai_review.py
 
       - name: Track and settle predictions
         env:
@@ -272,6 +277,7 @@ jobs:
           path: |
             data/value_analysis.json
             value_model_report.txt
+            data/value_ai_review.json
           if-no-files-found: warn
           retention-days: 30
 
