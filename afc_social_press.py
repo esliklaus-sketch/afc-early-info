@@ -18,6 +18,7 @@ from urllib.parse import quote, urlparse
 
 import feedparser
 import requests
+from news_search_strategy import discovery_urls, priority, scoped_evidence
 
 STATE_PATH = Path(os.getenv("AFC_PRESS_STATE", "afc_press_seen.json"))
 TIMEOUT = (3, 6)
@@ -2221,8 +2222,8 @@ if EXTRA_SOURCE_PATH.exists():
     for _team, _settings in _extra.get("teams", {}).items():
         if _team not in TARGET_TEAMS:
             TARGET_TEAMS.append(_team)
-        DISCOVERY_NAMES[_team] = _settings["aliases"]
-        MATCH_NAMES[_team] = _settings["aliases"]
+        DISCOVERY_NAMES[_team] = list(dict.fromkeys([_team] + _settings["aliases"]))
+        MATCH_NAMES[_team] = DISCOVERY_NAMES[_team]
         TEAM_NEWS_LOCALES[_team] = tuple(_settings["locale"])
     for _source in _extra.get("sources", []):
         if not any(s.get("url") == _source["url"] and s.get("team_canonical") == _source["team_canonical"] for s in SOURCE_REGISTRY):
@@ -2230,6 +2231,7 @@ if EXTRA_SOURCE_PATH.exists():
 SIGNALS["SQUAD"] += ["травма", "травмирован", "пропустит", "дисквалифицирован"]
 NATIVE_CLAIMS["SQUAD"] += ["травмирован", "пропустит матч", "дисквалифицирован"]
 NATIVE_CLAIMS["LINEUP"] += ["стартовый состав"]
+NATIVE_CLAIMS["TRAVEL"] += ["مجوز پرواز", "تاخیر پرواز", "تأخر الرحلة", "مشاكل التأشيرة", "visa bermasalah"]
 NATIVE_NEGATIONS += ["нет травм", "без травм"]
 FOOTBALL_TERMS += ["футбол", "футболист", "нападающий", "защитник", "вратарь", "матч", "بازیکن"]
 
@@ -2258,7 +2260,7 @@ def _relevance_reason(team, item):
 def _team_query(team):
     return "(" + " OR ".join('"' + name + '"' for name in DISCOVERY_NAMES.get(team, [team])) + ")"
 
-HIGH_PRIORITY = {"SQUAD", "LINEUP", "TRAVEL"}
+HIGH_PRIORITY = {"SQUAD", "LINEUP", "TRAVEL", "PREMATCH"}
 
 TEAM_ALIASES = {
     "Tractor SC": "Tractor", "Al Hussein Irbid": "Al Hussein", "Al Hussein SC": "Al Hussein",
@@ -2322,17 +2324,17 @@ def _source_search_feeds(team):
     return feeds
 
 def _feed_items(url):
-    for attempt in range(2):
+    for attempt in range(1):
         try:
-            with requests.get(url, timeout=(5, 20), headers={"User-Agent":"AFC-Early-Info/2.0"}) as r:
+            with requests.get(url, timeout=(3, 7), headers={"User-Agent":"AFC-Early-Info/2.0"}) as r:
                 r.raise_for_status()
                 content=r.content
             break
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            if attempt == 1:
+            if attempt == 0:
                 raise
         except requests.exceptions.HTTPError as exc:
-            if attempt == 1 or exc.response is None or exc.response.status_code not in (429, 500, 502, 503, 504):
+            if attempt == 0 or exc.response is None or exc.response.status_code not in (429, 500, 502, 503, 504):
                 raise
     feed=feedparser.parse(content)
     if feed.bozo and not feed.entries:
@@ -2405,7 +2407,7 @@ def _read_article(item, cache, blocked_hosts=None):
     return result
 
 
-def _signal_evidence(item, team=None):
+def _strict_signal_evidence(item, team=None):
     text=item["title"]+"\n"+item["summary"]+"\n"+item.get("article_text", "")
     segments=[x.strip() for x in re.split(r"[\n]+|(?<=[.!?])\s+",text) if x.strip()]
     names=MATCH_NAMES.get(team, DISCOVERY_NAMES.get(team, [team])) if team else []
@@ -2438,6 +2440,16 @@ def _signal_evidence(item, team=None):
     return evidence
 
 
+
+def _signal_evidence(item, team=None):
+    if not team:
+        return _strict_signal_evidence(item, team)
+    return scoped_evidence(
+        item, team, TARGET_TEAMS,
+        lambda t: MATCH_NAMES.get(t, DISCOVERY_NAMES.get(t, [t])),
+        _normalized, _contains, FOOTBALL_TERMS, NATIVE_CLAIMS,
+        NATIVE_NEGATIONS, _strict_signal_evidence)
+
 def _classify(item):
     return list(dict.fromkeys(kind for kind,_ in _signal_evidence(item)))
 
@@ -2460,6 +2472,7 @@ def _importance_score(tags,title,summary):
     if "SQUAD" in tags: score+=4
     if "LINEUP" in tags: score+=4
     if "TRAVEL" in tags: score+=4
+    if "PREMATCH" in tags: score+=3
     if "COACH" in tags: score+=1
     if any(x in txt for x in ["ruled out","suspended","out of squad","starting xi","starting lineup","visa issue","flight delayed"]): score+=2
     return min(MAX_IMPORTANCE_SCORE, score)
@@ -2493,14 +2506,14 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
         print("[AFC PRESS] REJECT_SAMPLE "+json.dumps({"reason":reason,"team":team,"title":item["title"],"summary":item.get("summary","")[:500],"published":published,"link":item.get("link","")},ensure_ascii=False),flush=True)
     started=time.monotonic(); failures=0; stopped=False
     # Check all general team feeds before optional publisher searches.
-    work=[(team, _google_news_feed(team)) for team in TARGET_TEAMS]
-    work += [(team, url) for team in TARGET_TEAMS for url in _source_search_feeds(team)]
+    work = [(team, url) for team in TARGET_TEAMS
+            for url in discovery_urls(_team_query(team), _publisher_domains(team), TEAM_NEWS_LOCALES.get(team))]
     def collect_feed(pair):
         team,url=pair
         try: return team,list(_feed_items(url)),None
         except Exception as exc: return team,[],str(exc)[:180]
     # Complete discovery for every team before any article extraction.
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         collected=list(pool.map(collect_feed,work))
     checked_feeds=len(collected)
     queues={team:[] for team in TARGET_TEAMS}
@@ -2512,6 +2525,10 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
         elif not entries: counts["empty_feeds"]+=1
         queues[team].extend(entries)
     print(f"[AFC PRESS] DISCOVERY_COMPLETE feeds={checked_feeds}/{len(work)} teams={len(queues)} errors={counts['feed_errors']}",flush=True)
+    # Prioritize concrete news inside each team, deduplicate before article reads.
+    for team, queue in queues.items():
+        unique = {item["link"]: item for item in queue if item.get("link")}
+        queues[team] = sorted(unique.values(), key=lambda item: priority(item, SIGNALS, _normalized), reverse=True)
     # Alternate teams so article time is shared across the entire target list.
     article_work=[]
     for index in range(max((len(q) for q in queues.values()),default=0)):
@@ -2578,8 +2595,11 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     counts["already_seen"]+=1; continue
                 candidates+=1
                 proof="\n".join("• "+sentence for _,sentence in evidence[:2])
+                published = datetime(*item["published"][:6], tzinfo=timezone.utc).isoformat()
+                reading = "Artikulli u lexua; pretendimi ende kërkon verifikim" if item.get("article_text") else "Vetëm titull/përmbledhje; artikulli nuk u lexua"
                 msg=(f"⚠️ AFC EARLY INFO | UNVERIFIED\n🏟️ Team: {team}\n"
                      f"🔎 Signals: {', '.join(tags)}\n"
+                     f"🕐 Publikuar: {published}\n📖 {reading}\n"
                      f"📌 Evidence:\n{proof}\n"
                      f"📰 {item['title'][:180]}\n🔗 {item.get('article_url') or item['link']}\n"
                      "⚠️ Candidate only: verify primary source, player identity, and match relevance.")
@@ -2604,4 +2624,13 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     print("[AFC PRESS] diagnostics="+json.dumps(counts,sort_keys=True),flush=True)
     st=registry_stats()
     print(f"[AFC PRESS] records={st['embedded_records']} teams={st['target_teams']} unique_urls={st['unique_urls']} feeds={checked_feeds} incomplete={stopped} candidates={candidates} {'dry_run' if dry_run else 'sent'}={alerts}",flush=True)
+    if not dry_run:
+        diagnostics = {"generated_at": now.isoformat(), "counts": counts,
+                       "feeds": checked_feeds, "article_reads": article_reads,
+                       "article_failures": article_failures, "incomplete": stopped,
+                       "candidates": candidates, "sent": alerts}
+        try:
+            Path("afc_search_diagnostics.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+        except OSError as exc:
+            print("[AFC PRESS] Diagnostics save failed:", type(exc).__name__, flush=True)
     return alerts

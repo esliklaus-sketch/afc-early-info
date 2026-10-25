@@ -679,7 +679,7 @@ def send_telegram(message):
 
     except Exception as exc:
 
-        print("Telegram error:", exc)
+        print("Telegram error:", type(exc).__name__)
 
         return False
 
@@ -894,7 +894,11 @@ def check_web_source(source, seen):
 
 def check_sources(seen):
 
+    started = time.monotonic()
     for source in SOURCES:
+        if time.monotonic() - started > 90:
+            print("[SOURCES] Secondary source time budget reached")
+            break
 
         try:
 
@@ -1191,8 +1195,8 @@ def main():
 
     try:
 
-        check_sources(seen)
         check_afc_social_press(send_telegram)
+        check_sources(seen)
     except Exception as exc:
 
         print("Main loop error:", exc)

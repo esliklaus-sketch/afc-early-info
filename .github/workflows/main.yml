@@ -48,7 +48,20 @@ jobs:
           AI_ENABLED: ${{ vars.AI_ENABLED }}
           AI_MIN_SCORE: "9"
           AI_MAX_CALLS_PER_RUN: "10"
-        run: python bot.py
+        run: |
+          set -euo pipefail
+          python -u bot.py 2>&1 | tee afc_search.log
+
+      - name: Save search diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: afc-search-diagnostics
+          path: |
+            afc_search_diagnostics.json
+            afc_search.log
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Save sent news
         if: always()
