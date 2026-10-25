@@ -2455,16 +2455,66 @@ def _classify(item):
 
 
 def _past_fixture(item, now):
-    # Only a labelled fixture date, not publication dates or historical results.
-    text=item.get("article_text", "")
-    match=re.search(r"(?:kick[ -]?off|today.s game[^\n]{0,100}?kick off|match date|fixture date)[^\n]{0,40}?(\d{1,2})[ /-]+([A-Za-z]{3,9})[ /,-]+(20\d{2})",text,re.I)
-    if not match: return False
-    try:
-        date=datetime.strptime(" ".join(match.groups()),"%d %b %Y").date()
-    except ValueError:
-        try: date=datetime.strptime(" ".join(match.groups()),"%d %B %Y").date()
-        except ValueError: return False
-    return date < now.date()
+    """Reject articles clearly describing completed matches or an explicitly past fixture.
+    A publication timestamp is never a fixture date. Unknown dates remain unverified.
+    """
+    title=item.get("title", "")
+    summary=item.get("summary", "")
+    body=item.get("article_text", "")
+    headline=(title+" "+summary).lower()
+    # Results and post-match reports should not be marketed as pre-match intelligence.
+    completed=re.search(
+        r"\b(?:final score|full[- ]time|post[- ]match|after the match|"
+        r"defeated|beat|lost to|ended in a draw|match ended|"
+        r"won \d+[-:]\d+|lost \d+[-:]\d+)\b", headline, re.I)
+    if completed:
+        return True
+    # Only accept a date when attached to an explicit match/fixture/kickoff label.
+    text=title+"\n"+summary+"\n"+body
+    patterns=[
+        r"(?:kick[ -]?off|match date|fixture date|scheduled for|match on|game on)"
+        r"[^\n.]{0,55}?(\d{1,2})[ /-]+([A-Za-z]{3,9})[ /,-]+(20\d{2})",
+        r"(?:kick[ -]?off|match date|fixture date|scheduled for|match on|game on)"
+        r"[^\n.]{0,55}?(20\d{2})-(\d{1,2})-(\d{1,2})",
+    ]
+    for index, pattern in enumerate(patterns):
+        match=re.search(pattern,text,re.I)
+        if not match: continue
+        try:
+            if index==0:
+                day,month,year=match.groups()
+                for fmt in ("%d %b %Y","%d %B %Y"):
+                    try:
+                        date=datetime.strptime(f"{day} {month} {year}",fmt).date()
+                        break
+                    except ValueError: date=None
+            else:
+                year,month,day=match.groups()
+                date=datetime(int(year),int(month),int(day)).date()
+            if date is not None:
+                return date < now.date()
+        except ValueError:
+            continue
+    return False
+
+
+def _unverified_lineup(item, tags):
+    """Third-party predicted lineups are not independently confirmed."""
+    if "LINEUP" not in tags:
+        return False
+    text=(item.get("title","")+" "+item.get("summary","")).lower()
+    url=(item.get("article_url") or item.get("link") or "").lower()
+    return (any(x in url for x in ("sportsgambler.com","sports-gambler.com"))
+            or bool(re.search(r"\b(predicted|probable|expected|projected)\b",text)))
+
+
+def _news_event_key(team, item, tags):
+    """Coarse cross-publisher deduplication for identical reported events."""
+    title=item.get("title","")
+    # Strip publisher suffix and punctuation; preserve player and injury details.
+    title=re.split(r"\s+[-|–]\s+",title,maxsplit=1)[0]
+    norm=_normalized(title)
+    return hashlib.sha256((team+"|"+norm+"|"+",".join(sorted(tags))).encode("utf-8")).hexdigest()
 
 
 def _importance_score(tags,title,summary):
@@ -2484,7 +2534,7 @@ def registry_stats():
 def check_afc_social_press(send_message, now=None, dry_run=False):
     now=now or datetime.now(timezone.utc)
     state=_load_state(); alerts=0; candidates=0; checked_feeds=0
-    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen", "past_fixture")}
+    counts={k:0 for k in ("items", "empty_feeds", "feed_errors", "missing_fields", "missing_date", "outside_window", "wrong_team", "not_football", "no_signal", "below_score", "already_seen", "past_fixture", "unverified_lineup", "duplicate_event")}
     samples={}
     article_cache={}
     blocked_hosts=set()
@@ -2492,7 +2542,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     article_reads=0
     article_failures=0
     sample_keys=set()
-    focus={"Esteghlal", "Al Gharafa", "Al Wasl", "Al Ahli Saudi", "Tai Po", "Tractor", "Gangwon"}
+    focus={"Esteghlal", "Al Gharafa", "Al Wasl", "Al Ahli Saudi", "Tai Po", "Tractor", "Gangwon", "The Cong Viettel", "FC Seoul"}
     def record_sample(reason, team, item):
         bucket=(reason, team if team in focus else "other")
         key=(reason,team,item["title"])
@@ -2532,7 +2582,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     # Alternate teams so article time is shared across the entire target list.
     article_work=[]
     for index in range(max((len(q) for q in queues.values()),default=0)):
-        article_work.extend((team,[queue[index]]) for team,queue in queues.items() if index<len(queue))
+        article_work.extend((team,[queue[index]]) for team,queue in sorted(queues.items(), key=lambda pair: pair[0] not in {"The Cong Viettel", "FC Seoul"}) if index<len(queue))
     processed_work=0
     for team, entries in article_work:
             if time.monotonic()-started >= MAX_SCAN_SECONDS:
@@ -2582,6 +2632,9 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     record_sample("past_fixture",team,item); continue
                 evidence=_signal_evidence(item,team)
                 tags=list(dict.fromkeys(kind for kind,_ in evidence))
+                if _unverified_lineup(item,tags) and set(tags)=={"LINEUP"}:
+                    counts["unverified_lineup"]+=1
+                    record_sample("unverified_lineup",team,item); continue
                 if not HIGH_PRIORITY.intersection(tags):
                     counts["no_signal"]+=1
                     record_sample("no_signal",team,item); continue
@@ -2593,6 +2646,9 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 digest=hashlib.sha256((team+"|"+norm).encode("utf-8")).hexdigest()
                 if digest in state:
                     counts["already_seen"]+=1; continue
+                event_key=_news_event_key(team,item,tags)
+                if event_key in state:
+                    counts["duplicate_event"]+=1; continue
                 candidates+=1
                 proof="\n".join("• "+sentence for _,sentence in evidence[:2])
                 published = datetime(*item["published"][:6], tzinfo=timezone.utc).isoformat()
@@ -2609,7 +2665,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     print(f"[AFC PRESS] Telegram sender error for {team}: {exc}",flush=True); continue
                 if delivered is not True:
                     print(f"[AFC PRESS] Delivery not confirmed for {team}; retry later",flush=True); continue
-                state[digest]=now.isoformat(); _save_state(state); alerts+=1
+                state[digest]=now.isoformat(); state[event_key]=now.isoformat(); _save_state(state); alerts+=1
                 print(f"[AFC PRESS] ALERT SENT: {team} | {item['title'][:100]}",flush=True)
     cutoff=now-timedelta(days=14)
     if not dry_run:
