@@ -1,0 +1,213 @@
+{
+  "policy": "When a source is used in a user-facing AFC analysis, add its reusable news section here after checking identity and readability. Record blocked/social sources as references, never claim monitored without successful retrieval.",
+  "teams": {
+    "FC Goa": {
+      "aliases": [
+        "FC Goa",
+        "Goa FC"
+      ],
+      "locale": [
+        "en",
+        "IN"
+      ]
+    },
+    "Paro FC": {
+      "aliases": [
+        "Paro FC",
+        "Paro Football Club"
+      ],
+      "locale": [
+        "en",
+        "IN"
+      ]
+    },
+    "Homs Al Fida": {
+      "aliases": [
+        "Homs Al Fida",
+        "Homs Al Fidaa",
+        "حمص الفداء"
+      ],
+      "locale": [
+        "ar",
+        "SA"
+      ]
+    },
+    "Al Ittihad Aleppo": {
+      "aliases": [
+        "Al Ittihad Aleppo",
+        "Al Ittihad Ahli of Aleppo",
+        "أهلي حلب",
+        "الاتحاد أهلي حلب"
+      ],
+      "locale": [
+        "ar",
+        "SA"
+      ]
+    },
+    "Nejmeh": {
+      "aliases": [
+        "Nejmeh",
+        "Al Nejmeh",
+        "نادي النجمة اللبناني"
+      ],
+      "locale": [
+        "ar",
+        "SA"
+      ]
+    },
+    "Al Ansar": {
+      "aliases": [
+        "Al Ansar FC",
+        "Al Ansar Lebanon",
+        "الأنصار اللبناني"
+      ],
+      "locale": [
+        "ar",
+        "SA"
+      ]
+    },
+    "Istiklol": {
+      "aliases": [
+        "FC Istiklol",
+        "Istiklol",
+        "Истиклол",
+        "Истиқлол"
+      ],
+      "locale": [
+        "ru",
+        "RU"
+      ]
+    },
+    "Regar TadAZ": {
+      "aliases": [
+        "Regar TadAZ",
+        "Regar-TadAZ",
+        "Регар-ТадАЗ"
+      ],
+      "locale": [
+        "ru",
+        "RU"
+      ]
+    },
+    "Qadsia SC": {
+      "aliases": [
+        "Qadsia SC",
+        "Qadsia",
+        "القادسية الكويتي"
+      ],
+      "locale": [
+        "ar",
+        "KW"
+      ]
+    },
+    "Al Arabi Kuwait": {
+      "aliases": [
+        "Al Arabi SC Kuwait",
+        "العربي الكويتي"
+      ],
+      "locale": [
+        "ar",
+        "KW"
+      ]
+    },
+    "Borneo FC": {
+      "aliases": [
+        "Borneo FC",
+        "Borneo Samarinda"
+      ],
+      "locale": [
+        "id",
+        "ID"
+      ]
+    },
+    "Shan United": {
+      "aliases": [
+        "Shan United",
+        "Shan United FC"
+      ],
+      "locale": [
+        "en",
+        "US"
+      ]
+    },
+    "Manila Digger": {
+      "aliases": [
+        "Manila Digger",
+        "Manila Digger FC"
+      ],
+      "locale": [
+        "en",
+        "PH"
+      ]
+    },
+    "Tainan City": {
+      "aliases": [
+        "Tainan City FC",
+        "Taiwan Steel",
+        "台南市台灣鋼鐵"
+      ],
+      "locale": [
+        "zh-TW",
+        "TW"
+      ]
+    },
+    "Hang Yuen": {
+      "aliases": [
+        "Hang Yuen",
+        "Hang Yuan",
+        "航源"
+      ],
+      "locale": [
+        "zh-TW",
+        "TW"
+      ]
+    },
+    "Kasuka": {
+      "aliases": [
+        "Kasuka FC",
+        "Kasuka"
+      ],
+      "locale": [
+        "en",
+        "US"
+      ]
+    }
+  },
+  "sources": [
+    {
+      "team_canonical": "GLOBAL",
+      "source_name": "AFC Challenge League official news",
+      "url": "https://www.the-afc.com/en/club/afc_challenge_league.html",
+      "type": "competition",
+      "status": "web_search_confirmed"
+    },
+    {
+      "team_canonical": "FC Goa",
+      "source_name": "AIFF Challenge League",
+      "url": "https://www.the-aiff.com/articles/afc-challenge-league",
+      "type": "federation",
+      "status": "web_search_confirmed"
+    },
+    {
+      "team_canonical": "Istiklol",
+      "source_name": "FC Istiklol official",
+      "url": "https://fc-istiklol.tj/?lang=ru",
+      "type": "club",
+      "status": "web_search_confirmed"
+    },
+    {
+      "team_canonical": "Istiklol",
+      "source_name": "Tajikistan Football Federation",
+      "url": "https://fft.tj/category/league-ru/",
+      "type": "federation",
+      "status": "web_search_confirmed"
+    },
+    {
+      "team_canonical": "Regar TadAZ",
+      "source_name": "Tajikistan Football Federation",
+      "url": "https://fft.tj/category/league-ru/",
+      "type": "federation",
+      "status": "web_search_confirmed"
+    }
+  ]
+}

@@ -55,6 +55,7 @@ SEEN_FILE = "seen_news.txt"
 # =========================
 
 LEAGUES = {
+    "AFC Challenge League": {"enabled": True, "keywords": ["afc challenge league", "liga tantangan afc", "دوري التحدي", "лига вызова"]},
     "AFC Champions League Elite": {
         "enabled": True,
         "keywords": [

@@ -2213,6 +2213,26 @@ NATIVE_CLAIMS = {
 }
 NATIVE_NEGATIONS = ["tidak cedera", "tidak ada cedera", "ไม่มีอาการบาดเจ็บ", "負傷者なし", "부상 없음", "无伤病", "無傷病", "không chấn thương", "لا توجد إصابات"]
 
+
+# Persistent, reviewable source additions shared by future research updates.
+EXTRA_SOURCE_PATH = Path(__file__).with_name("afc_extra_sources.json")
+if EXTRA_SOURCE_PATH.exists():
+    _extra = json.loads(EXTRA_SOURCE_PATH.read_text(encoding="utf-8"))
+    for _team, _settings in _extra.get("teams", {}).items():
+        if _team not in TARGET_TEAMS:
+            TARGET_TEAMS.append(_team)
+        DISCOVERY_NAMES[_team] = _settings["aliases"]
+        MATCH_NAMES[_team] = _settings["aliases"]
+        TEAM_NEWS_LOCALES[_team] = tuple(_settings["locale"])
+    for _source in _extra.get("sources", []):
+        if not any(s.get("url") == _source["url"] and s.get("team_canonical") == _source["team_canonical"] for s in SOURCE_REGISTRY):
+            SOURCE_REGISTRY.append(_source)
+SIGNALS["SQUAD"] += ["травма", "травмирован", "пропустит", "дисквалифицирован"]
+NATIVE_CLAIMS["SQUAD"] += ["травмирован", "пропустит матч", "дисквалифицирован"]
+NATIVE_CLAIMS["LINEUP"] += ["стартовый состав"]
+NATIVE_NEGATIONS += ["нет травм", "без травм"]
+FOOTBALL_TERMS += ["футбол", "футболист", "нападающий", "защитник", "вратарь", "матч", "بازیکن"]
+
 def _normalized(text):
     text=html.unescape(unicodedata.normalize("NFKC", text)).casefold()
     text=re.sub(r"[\u064b-\u065f\u0670]", "", text).replace("ـ", "")
@@ -2271,7 +2291,9 @@ def _host(url):
 def _publisher_domains(team):
     team=_canon(team)
     domains=[]
-    for src in SOURCE_REGISTRY:
+    # Team-specific sources must not be crowded out by global directories.
+    ordered = sorted(SOURCE_REGISTRY, key=lambda s: _canon(s.get("team_canonical") or s.get("team") or "") != team)
+    for src in ordered:
         src_team=_canon(src.get("team_canonical") or src.get("team") or "")
         if src_team not in {team, "GLOBAL"}:
             continue
