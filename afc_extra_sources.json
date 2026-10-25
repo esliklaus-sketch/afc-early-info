@@ -171,6 +171,59 @@
         "en",
         "US"
       ]
+    },
+    "Tractor": {
+      "aliases": [
+        "Tractor FC",
+        "Tractor SC",
+        "تراکتور"
+      ],
+      "locale": [
+        "fa",
+        "IR"
+      ]
+    },
+    "Al Ain": {
+      "aliases": [
+        "Al Ain FC",
+        "Al-Ain FC",
+        "نادي العين"
+      ],
+      "locale": [
+        "ar",
+        "AE"
+      ]
+    },
+    "Al Shamal": {
+      "aliases": [
+        "Al Shamal",
+        "الشمال القطري"
+      ],
+      "locale": [
+        "ar",
+        "QA"
+      ]
+    },
+    "Al Hilal": {
+      "aliases": [
+        "Al Hilal",
+        "الهلال السعودي"
+      ],
+      "locale": [
+        "ar",
+        "SA"
+      ]
+    },
+    "FC Seoul": {
+      "aliases": [
+        "FC Seoul",
+        "FC서울",
+        "FC 서울"
+      ],
+      "locale": [
+        "ko",
+        "KR"
+      ]
     }
   },
   "sources": [
@@ -208,6 +261,149 @@
       "url": "https://fft.tj/category/league-ru/",
       "type": "federation",
       "status": "web_search_confirmed"
+    },
+    {
+      "team_canonical": "Tractor",
+      "source_name": "Tasnim Sport",
+      "url": "https://www.tasnimnews.ir/fa/service/3/ورزشی",
+      "language": "fa",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Tractor",
+      "source_name": "Iran International Sport",
+      "url": "https://www.iranintl.com/sport",
+      "language": "fa",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Ain",
+      "source_name": "Tasnim Sport",
+      "url": "https://www.tasnimnews.ir/fa/service/3/ورزشی",
+      "language": "fa",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Ain",
+      "source_name": "Iran International Sport",
+      "url": "https://www.iranintl.com/sport",
+      "language": "fa",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Shamal",
+      "source_name": "Arriyadiyah",
+      "url": "https://arriyadiyah.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Shamal",
+      "source_name": "Kooora",
+      "url": "https://www.kooora.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Shamal",
+      "source_name": "Asharq Sports",
+      "url": "https://sports.asharq.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Shamal",
+      "source_name": "Winwin",
+      "url": "https://www.winwin.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Hilal",
+      "source_name": "Arriyadiyah",
+      "url": "https://arriyadiyah.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Hilal",
+      "source_name": "Kooora",
+      "url": "https://www.kooora.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Hilal",
+      "source_name": "Asharq Sports",
+      "url": "https://sports.asharq.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "Al Hilal",
+      "source_name": "Winwin",
+      "url": "https://www.winwin.com/",
+      "language": "ar",
+      "status": "web_page_confirmed",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    },
+    {
+      "team_canonical": "FC Seoul",
+      "source_name": "Yonhap Sport",
+      "url": "https://www.yna.co.kr/sports/all",
+      "language": "ko",
+      "status": "indexed_articles_confirmed_section_fetch_blocked",
+      "type": "sports_reporting",
+      "provenance": "Recovered publisher from 23–24 Oct user analyses; reusable section verified 25 Oct. Exact historical article not recovered except Iran International.",
+      "monitoring": "publisher_scoped_google_news_discovery_article_read_when_accessible"
+    }
+  ],
+  "recovered_article_examples": [
+    {
+      "team": "Tractor",
+      "url": "https://www.iranintl.com/202610228066",
+      "source": "Iran International",
+      "status": "exact_prior_link_recovered_and_opened"
+    },
+    {
+      "team": "FC Seoul",
+      "source": "Yonhap",
+      "status": "prior_source_name_recovered_exact_article_unavailable"
     }
   ]
 }
