@@ -2586,6 +2586,13 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     counts["no_signal"]+=1
                     record_sample("no_signal",team,item); continue
                 score=_importance_score(tags,item["title"],item["summary"]+" "+item.get("article_text", ""))
+                # Keep discovery maximally sensitive; suppress only demonstrably irrelevant alerts.
+                from alert_quality_filter import reject_alert
+                quality_reason = reject_alert(team, item, evidence, tags)
+                if quality_reason:
+                    counts["quality_" + quality_reason] += 1
+                    record_sample("quality_" + quality_reason, team, item)
+                    continue
                 if score < MIN_ALERT_SCORE:
                     counts["below_score"]+=1; continue
                 norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
