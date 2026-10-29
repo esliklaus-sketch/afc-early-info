@@ -2306,6 +2306,26 @@ def _publisher_domains(team):
             domains.append(h)
     return domains[:12]
 
+def _social_discovery_feed(team):
+    """Discover publicly indexed club social posts; NOT direct Facebook/Instagram API access.
+
+    Only query platforms with a registered account for this club. This cannot
+    guarantee coverage of stories, private posts, images, or unindexed updates.
+    """
+    hosts = set()
+    for src in SOURCE_REGISTRY:
+        if _canon(src.get("team_canonical") or src.get("team") or "") != _canon(team):
+            continue
+        host = _host(src.get("url", ""))
+        if host in {"facebook.com", "instagram.com", "x.com", "twitter.com"}:
+            hosts.add(host)
+    if not hosts:
+        return None
+    sites = " OR ".join("site:" + h for h in sorted(hosts))
+    q = f'{_team_query(team)} ({sites}) (injury OR squad OR training OR travel OR lineup OR injured OR unavailable OR 傷病 OR 부상 OR إصابة OR مصدوم) when:3d'
+    return "https://news.google.com/rss/search?q=" + quote(q) + "&hl=en&gl=US&ceid=US:en"
+
+
 def _google_news_feed(team):
     q=f'{_team_query(team)} (football OR soccer OR AFC OR فوتبال OR \"كرة القدم\" OR 축구 OR 足球 OR サッカー OR \"sepak bola\" OR ฟุตบอล OR \"bóng đá\") when:2d'
     return "https://news.google.com/rss/search?q="+quote(q)+"&hl=en&gl=US&ceid=US:en"
@@ -2507,7 +2527,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
     started=time.monotonic(); failures=0; stopped=False
     # Check all general team feeds before optional publisher searches.
     work = [(team, url) for team in TARGET_TEAMS
-            for url in discovery_urls(_team_query(team), _publisher_domains(team), TEAM_NEWS_LOCALES.get(team))]
+            for url in (discovery_urls(_team_query(team), _publisher_domains(team), TEAM_NEWS_LOCALES.get(team)) + ([_social_discovery_feed(team)] if _social_discovery_feed(team) else []))]
     def collect_feed(pair):
         team,url=pair
         try: return team,list(_feed_items(url)),None
