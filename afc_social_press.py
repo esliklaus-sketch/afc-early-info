@@ -2639,6 +2639,16 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                      f"🔍 KONTROLLI: {reading}\n"
                      f"🌐 BURIMI: {platform}\n🔗 {item.get('article_url') or item['link']}")
                 if dry_run: alerts+=1; continue
+                # Add previous dated leads only; never present them as confirmed absences.
+                try:
+                    from team_intelligence import update_dossier
+                    dossier = update_dossier(team, item, tags, evidence, now=now)
+                    msg += ("\n\n📂 HISTORIKU I EKIPIT (sinjale të ruajtura):\n"
+                            + dossier["history"]
+                            + "\n🔄 GJENDJA AKTUALE: " + dossier["current"]
+                            + "\n⚠️ KUFIZIM: " + dossier["warning"])
+                except Exception as exc:
+                    print(f"[AFC PRESS] Dossier unavailable for {team}: {exc}", flush=True)
                 try: delivered=send_message(msg)
                 except Exception as exc:
                     print(f"[AFC PRESS] Telegram sender error for {team}: {exc}",flush=True); continue
