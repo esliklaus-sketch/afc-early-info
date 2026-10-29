@@ -2317,12 +2317,12 @@ def _social_discovery_feed(team):
         if _canon(src.get("team_canonical") or src.get("team") or "") != _canon(team):
             continue
         host = _host(src.get("url", ""))
-        if host in {"facebook.com", "instagram.com", "x.com", "twitter.com"}:
+        if host in {"facebook.com", "instagram.com", "x.com", "twitter.com", "youtube.com", "tiktok.com", "t.me", "telegram.me"}:
             hosts.add(host)
     if not hosts:
         return None
     sites = " OR ".join("site:" + h for h in sorted(hosts))
-    q = f'{_team_query(team)} ({sites}) (injury OR squad OR training OR travel OR lineup OR injured OR unavailable OR 傷病 OR 부상 OR إصابة OR مصدوم) when:3d'
+    q = f'{_team_query(team)} ({sites}) (injury OR squad OR training OR travel OR lineup OR injured OR unavailable OR 傷病 OR 부상 OR إصابة OR غياب OR سفر OR تمرين OR latihan OR cedera OR 훈련 OR 遠征) when:3d'
     return "https://news.google.com/rss/search?q=" + quote(q) + "&hl=en&gl=US&ceid=US:en"
 
 
@@ -2624,12 +2624,20 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 proof="\n".join("• "+sentence for _,sentence in evidence[:2])
                 published = datetime(*item["published"][:6], tzinfo=timezone.utc).isoformat()
                 reading = "Artikulli u lexua; pretendimi ende kërkon verifikim" if item.get("article_text") else "Vetëm titull/përmbledhje; artikulli nuk u lexua"
-                msg=(f"⚠️ AFC EARLY INFO | UNVERIFIED\n🏟️ Team: {team}\n"
-                     f"🔎 Signals: {', '.join(tags)}\n"
-                     f"🕐 Publikuar: {published}\n📖 {reading}\n"
-                     f"📌 Evidence:\n{proof}\n"
-                     f"📰 {item['title'][:180]}\n🔗 {item.get('article_url') or item['link']}\n"
-                     "⚠️ Candidate only: verify primary source, player identity, and match relevance.")
+                # This is a signal-strength score, NOT a verified player-impact estimate.
+                impact = "I LARTË" if score >= 8 else ("MESATAR" if score >= 5 else "PËR KONTROLL")
+                platform = _host(item.get("article_url") or item.get("link", ""))
+                context_note = ("Nuk ka ende krahasim të verifikuar me titullarët, minutat ose "
+                                "listën e udhëtimit; mos e trajto si ndikim të konfirmuar.")
+                msg=(f"🔎 AFC EARLY INFO | {impact} | {score}/10 (forca e sinjalit)\n"
+                     f"⚠️ STATUS: PA VERIFIKUAR\n🏟️ EKIPI: {team}\n"
+                     f"📌 ÇFARË U GJET: {item['title'][:180]}\n"
+                     f"🧩 LLOJI: {', '.join(tags)}\n"
+                     f"📖 PROVAT:\n{proof}\n"
+                     f"🧠 ÇFARË NUK DIMË ENDE: {context_note}\n"
+                     f"🕐 PUBLIKUAR: {published}\n"
+                     f"🔍 KONTROLLI: {reading}\n"
+                     f"🌐 BURIMI: {platform}\n🔗 {item.get('article_url') or item['link']}")
                 if dry_run: alerts+=1; continue
                 try: delivered=send_message(msg)
                 except Exception as exc:
