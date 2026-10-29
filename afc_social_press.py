@@ -2568,8 +2568,10 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                 if not _recent(item,now):
                     counts["outside_window"]+=1
                     record_sample("outside_window",team,item); continue
-                norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
+                norm=re.sub(r"[^\w\s]"," ",html.unescape(item["title"]).lower(),flags=re.UNICODE)
                 norm=re.sub(r"\s+"," ",norm).strip()
+                # Remove publisher suffixes and RSS formatting noise before deduplication.
+                norm=re.sub(r"\s+(tribunjabar id|kyoto np co jp|google news)$","",norm)
                 digest=hashlib.sha256((team+"|"+norm).encode("utf-8")).hexdigest()
                 if digest in state:
                     counts["already_seen"]+=1; continue
@@ -2615,13 +2617,15 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                     continue
                 if score < MIN_ALERT_SCORE:
                     counts["below_score"]+=1; continue
-                norm=re.sub(r"[^\w\s]"," ",item["title"].lower(),flags=re.UNICODE)
+                norm=re.sub(r"[^\w\s]"," ",html.unescape(item["title"]).lower(),flags=re.UNICODE)
                 norm=re.sub(r"\s+"," ",norm).strip()
+                # Remove publisher suffixes and RSS formatting noise before deduplication.
+                norm=re.sub(r"\s+(tribunjabar id|kyoto np co jp|google news)$","",norm)
                 digest=hashlib.sha256((team+"|"+norm).encode("utf-8")).hexdigest()
                 if digest in state:
                     counts["already_seen"]+=1; continue
                 candidates+=1
-                proof="\n".join("• "+sentence for _,sentence in evidence[:2])
+                proof="\n".join("• "+html.unescape(sentence).replace("\\xa0"," ").strip() for _,sentence in evidence[:2])
                 published = datetime(*item["published"][:6], tzinfo=timezone.utc).isoformat()
                 reading = "Artikulli u lexua; pretendimi ende kërkon verifikim" if item.get("article_text") else "Vetëm titull/përmbledhje; artikulli nuk u lexua"
                 # This is a signal-strength score, NOT a verified player-impact estimate.
@@ -2631,7 +2635,7 @@ def check_afc_social_press(send_message, now=None, dry_run=False):
                                 "listën e udhëtimit; mos e trajto si ndikim të konfirmuar.")
                 msg=(f"🔎 AFC EARLY INFO | {impact} | {score}/10 (forca e sinjalit)\n"
                      f"⚠️ STATUS: PA VERIFIKUAR\n🏟️ EKIPI: {team}\n"
-                     f"📌 ÇFARË U GJET: {item['title'][:180]}\n"
+                     f"📌 ÇFARË U GJET: {html.unescape(item['title'])[:180]}\n"
                      f"🧩 LLOJI: {', '.join(tags)}\n"
                      f"📖 PROVAT:\n{proof}\n"
                      f"🧠 ÇFARË NUK DIMË ENDE: {context_note}\n"
