@@ -2396,10 +2396,23 @@ def _read_article(item, cache, blocked_hosts=None):
     try:
         if _host(link) == "news.google.com":
             from googlenewsdecoder import gnewsdecoder
-            decoded=gnewsdecoder(link, interval=0)
-            if not decoded.get("success") or not decoded.get("decoded_url"):
-                raise ValueError("Google News URL could not be resolved")
-            link=decoded["decoded_url"]
+            # Google News decoding sometimes fails transiently. Retry once with a
+            # short pause, but never treat the Google News wrapper as article text.
+            errors=[]
+            for interval in (0, 1):
+                try:
+                    decoded=gnewsdecoder(link, interval=interval)
+                    candidate=decoded.get("decoded_url") if isinstance(decoded, dict) else None
+                    if decoded.get("success") and candidate:
+                        target=urlparse(candidate)
+                        if target.scheme in {"http", "https"} and target.hostname and _host(candidate) != "news.google.com":
+                            link=candidate
+                            break
+                    errors.append(str(decoded.get("message", "no decoded URL"))[:100])
+                except Exception as decode_exc:
+                    errors.append(type(decode_exc).__name__ + ": " + str(decode_exc)[:100])
+            else:
+                raise ValueError("Google News URL could not be resolved: " + " | ".join(errors)[:200])
         parsed=urlparse(link)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Invalid article URL")
